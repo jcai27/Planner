@@ -19,22 +19,25 @@ export default function HomePage() {
     setError("");
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`);
+      const res = await fetch(`/api/backend/geocode?q=${encodeURIComponent(address)}`);
       if (!res.ok) throw new Error("Failed to contact geocoding service");
-      const data = await res.json();
+      const payload = await res.json();
+      const results = Array.isArray(payload?.results) ? payload.results : [];
 
-      if (!data || data.length === 0) {
-        throw new Error("Address not found. Please try a more specific address or notable landmark.");
+      if (results.length === 0) {
+        throw new Error("Address not found. Try adding street, city, state, and country.");
       }
 
-      const accommodation_lat = Number(data[0].lat);
-      const accommodation_lng = Number(data[0].lon);
+      const top = results[0];
+      const accommodation_lat = Number(top.lat);
+      const accommodation_lng = Number(top.lng);
+      const resolvedAddress = typeof top.address === "string" && top.address.trim() ? top.address : address;
 
       const trip = await api.createTrip({
         destination,
         start_date: startDate,
         end_date: endDate,
-        accommodation_address: address,
+        accommodation_address: resolvedAddress,
         accommodation_lat,
         accommodation_lng
       });

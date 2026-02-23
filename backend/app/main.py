@@ -14,7 +14,16 @@ load_dotenv()
 from . import models  # noqa: F401
 from .db import Base, engine as db_engine
 from .engine import ItineraryEngine
-from .schemas import CreateTripRequest, ItineraryResult, JoinTripRequest, Participant, Trip, TripCreateResponse
+from .geocoding import geocode_address
+from .schemas import (
+    CreateTripRequest,
+    GeocodeResponse,
+    ItineraryResult,
+    JoinTripRequest,
+    Participant,
+    Trip,
+    TripCreateResponse,
+)
 from .repository import SqlRepository
 
 DEFAULT_CORS_ORIGINS = [
@@ -26,6 +35,14 @@ DEFAULT_CORS_ORIGIN_REGEX = r"^https://[a-zA-Z0-9-]+\.vercel\.app$"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    print(
+        "startup_cors_config",
+        {
+            "allow_origins": CORS_ORIGINS,
+            "allow_origin_regex": CORS_ORIGIN_REGEX,
+            "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        },
+    )
     Base.metadata.create_all(bind=db_engine)
     yield
 
@@ -47,12 +64,15 @@ def _load_cors_origin_regex() -> str | None:
     return DEFAULT_CORS_ORIGIN_REGEX
 
 
+CORS_ORIGINS = _load_cors_origins()
+CORS_ORIGIN_REGEX = _load_cors_origin_regex()
+
 app = FastAPI(title="AI Group Itinerary Planner API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_load_cors_origins(),
-    allow_origin_regex=_load_cors_origin_regex(),
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -125,3 +145,28 @@ def get_itinerary(trip_id: str, trip_token: str | None = Header(default=None, al
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not generated yet")
     return itinerary
+
+
+@app.get("/geocode", response_model=GeocodeResponse)
+def geocode(q: str):
+    query = q.strip()
+    if len(query) < 3:
+        raise HTTPException(status_code=422, detail="Address query must be at least 3 characters")
+
+    google_api_key = os.getenv("GOOGLE_GEOCODING_API_KEY") or os.getenv("GOOGLE_PLACES_API_KEY")
+    try:
+        max_results = max(1, min(int(os.getenv("GEOCODE_MAX_RESULTS", "6")), 10))
+    except ValueError:
+        max_results = 6
+    results = geocode_address(query=query, google_api_key=google_api_key, limit=max_results)
+    return GeocodeResponse(query=query, results=results)
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        "cors_allow_origins": CORS_ORIGINS,
+        "cors_allow_origin_regex": CORS_ORIGIN_REGEX,
+    }

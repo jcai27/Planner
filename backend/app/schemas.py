@@ -132,3 +132,16 @@ class ItineraryResult(BaseModel):
 
 class JoinTripRequest(ParticipantInput):
     pass
+
+
+class GeocodeCandidate(BaseModel):
+    address: str
+    lat: float
+    lng: float
+    provider: str
+    confidence: float
+
+
+class GeocodeResponse(BaseModel):
+    query: str
+    results: List[GeocodeCandidate]

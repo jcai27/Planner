@@ -214,6 +214,40 @@ def test_trip_endpoints_require_valid_access_token():
         assert valid_token_resp.status_code == 200
 
 
+def test_geocode_endpoint_returns_candidates(monkeypatch):
+    from app import main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "geocode_address",
+        lambda query, google_api_key, limit: [
+            {
+                "address": "1600 Amphitheatre Pkwy, Mountain View, CA 94043, USA",
+                "lat": 37.422,
+                "lng": -122.084,
+                "provider": "google_geocoding",
+                "confidence": 1.0,
+            }
+        ],
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/geocode", params={"q": "1600 Amphitheatre Pkwy, Mountain View, CA"})
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["query"] == "1600 Amphitheatre Pkwy, Mountain View, CA"
+    assert payload["results"]
+    assert payload["results"][0]["address"].startswith("1600 Amphitheatre")
+
+
+def test_geocode_endpoint_rejects_short_query():
+    with TestClient(app) as client:
+        resp = client.get("/geocode", params={"q": "a"})
+
+    assert resp.status_code == 422
+
+
 def test_cors_defaults_include_local_dev_and_vercel_preview_regex(monkeypatch):
     monkeypatch.delenv("CORS_ALLOW_ORIGINS", raising=False)
     monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)
