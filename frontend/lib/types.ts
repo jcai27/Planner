@@ -68,3 +68,31 @@ export type ItineraryResult = {
   generated_at: string;
   options: ItineraryOption[];
 };
+
+export type DraftSlotName = "morning" | "afternoon" | "evening";
+
+export type DraftSlot = {
+  slot_id: string;
+  day: number;
+  slot: DraftSlotName;
+  candidates: Activity[];
+};
+
+export type DraftSchedule = {
+  trip_id: string;
+  generated_at: string;
+  slots: DraftSlot[];
+};
+
+export type DraftSelection = {
+  slot_id: string;
+  day: number;
+  slot: DraftSlotName;
+  activity: Activity;
+};
+
+export type DraftPlan = {
+  trip_id: string;
+  saved_at: string;
+  selections: DraftSelection[];
+};

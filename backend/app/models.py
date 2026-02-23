@@ -20,6 +20,7 @@ class TripModel(Base):
 
     participants = relationship("ParticipantModel", back_populates="trip", cascade="all, delete-orphan")
     itinerary = relationship("ItineraryModel", back_populates="trip", uselist=False, cascade="all, delete-orphan")
+    draft_plan = relationship("DraftPlanModel", back_populates="trip", uselist=False, cascade="all, delete-orphan")
 
 
 class ParticipantModel(Base):
@@ -43,3 +44,13 @@ class ItineraryModel(Base):
     payload = Column(JSON, nullable=False)
 
     trip = relationship("TripModel", back_populates="itinerary")
+
+
+class DraftPlanModel(Base):
+    __tablename__ = "draft_plans"
+
+    trip_id = Column(String, ForeignKey("trips.id", ondelete="CASCADE"), primary_key=True)
+    saved_at = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+
+    trip = relationship("TripModel", back_populates="draft_plan")

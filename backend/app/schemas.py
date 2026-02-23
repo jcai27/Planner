@@ -145,3 +145,39 @@ class GeocodeCandidate(BaseModel):
 class GeocodeResponse(BaseModel):
     query: str
     results: List[GeocodeCandidate]
+
+
+class DraftSlotName(str, Enum):
+    morning = "morning"
+    afternoon = "afternoon"
+    evening = "evening"
+
+
+class DraftSlot(BaseModel):
+    slot_id: str
+    day: int
+    slot: DraftSlotName
+    candidates: List[Activity]
+
+
+class DraftSchedule(BaseModel):
+    trip_id: str
+    generated_at: str
+    slots: List[DraftSlot]
+
+
+class DraftSelection(BaseModel):
+    slot_id: str
+    day: int
+    slot: DraftSlotName
+    activity: Activity
+
+
+class DraftPlanSaveRequest(BaseModel):
+    selections: List[DraftSelection] = Field(min_length=1)
+
+
+class DraftPlan(BaseModel):
+    trip_id: str
+    saved_at: str
+    selections: List[DraftSelection]

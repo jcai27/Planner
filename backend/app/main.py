@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 import os
 import secrets
 from uuid import uuid4
@@ -17,6 +18,9 @@ from .engine import ItineraryEngine
 from .geocoding import geocode_address
 from .schemas import (
     CreateTripRequest,
+    DraftPlan,
+    DraftPlanSaveRequest,
+    DraftSchedule,
     GeocodeResponse,
     ItineraryResult,
     JoinTripRequest,
@@ -145,6 +149,56 @@ def get_itinerary(trip_id: str, trip_token: str | None = Header(default=None, al
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not generated yet")
     return itinerary
+
+
+@app.get("/trip/{trip_id}/draft_slots", response_model=DraftSchedule)
+def get_draft_slots(trip_id: str, trip_token: str | None = Header(default=None, alias="X-Trip-Token")):
+    _require_trip_access(trip_id, trip_token)
+    trip = store.get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    try:
+        configured = int(os.getenv("DRAFT_SLOT_CHOICES", "4"))
+    except ValueError:
+        configured = 4
+
+    try:
+        return itinerary_engine.generate_slot_draft(trip, choices_per_slot=configured)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/trip/{trip_id}/draft_plan", response_model=DraftPlan)
+def save_draft_plan(
+    trip_id: str,
+    payload: DraftPlanSaveRequest,
+    trip_token: str | None = Header(default=None, alias="X-Trip-Token"),
+):
+    _require_trip_access(trip_id, trip_token)
+    trip = store.get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    slot_ids = [selection.slot_id for selection in payload.selections]
+    if len(slot_ids) != len(set(slot_ids)):
+        raise HTTPException(status_code=422, detail="Duplicate slot selections are not allowed")
+
+    draft_plan = DraftPlan(
+        trip_id=trip_id,
+        saved_at=datetime.utcnow().isoformat(),
+        selections=payload.selections,
+    )
+    return store.save_draft_plan(trip_id, draft_plan)
+
+
+@app.get("/trip/{trip_id}/draft_plan", response_model=DraftPlan)
+def get_saved_draft_plan(trip_id: str, trip_token: str | None = Header(default=None, alias="X-Trip-Token")):
+    _require_trip_access(trip_id, trip_token)
+    draft_plan = store.get_draft_plan(trip_id)
+    if not draft_plan:
+        raise HTTPException(status_code=404, detail="Draft plan not saved yet")
+    return draft_plan
 
 
 @app.get("/geocode", response_model=GeocodeResponse)

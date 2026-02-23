@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
-import { ItineraryResult, InterestVector, Trip } from "@/lib/types";
+import { Activity, DraftPlan, DraftSchedule, ItineraryResult, InterestVector, Trip } from "@/lib/types";
 
 const defaultInterests: InterestVector = {
   food: 3,
@@ -21,12 +21,18 @@ export default function TripPage() {
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [itinerary, setItinerary] = useState<ItineraryResult | null>(null);
+  const [draft, setDraft] = useState<DraftSchedule | null>(null);
+  const [savedDraftPlan, setSavedDraftPlan] = useState<DraftPlan | null>(null);
+  const [draftIndex, setDraftIndex] = useState(0);
+  const [draftPicks, setDraftPicks] = useState<Record<string, Activity>>({});
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [participantName, setParticipantName] = useState("");
   const [interests, setInterests] = useState<InterestVector>(defaultInterests);
   const [schedulePreference, setSchedulePreference] = useState<"packed" | "balanced" | "chill">("balanced");
   const [wakePreference, setWakePreference] = useState<"early" | "normal" | "late">("normal");
   const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [saveBusy, setSaveBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const interestEntries = useMemo(
     () => Object.entries(interests) as [keyof InterestVector, number][],
@@ -37,6 +43,54 @@ export default function TripPage() {
     balanced: "Even pace across culture, food, and downtime",
     chill: "Lower pressure pacing with lighter transitions"
   };
+  const slotLabel: Record<string, string> = {
+    morning: "Morning",
+    afternoon: "Afternoon",
+    evening: "Evening"
+  };
+  const draftSlots = draft?.slots ?? [];
+  const currentDraftSlot = draftSlots[draftIndex] ?? null;
+  const draftComplete = draftSlots.length > 0 && draftSlots.every((slot) => !!draftPicks[slot.slot_id]);
+  const draftPickedCount = draftSlots.reduce((count, slot) => count + (draftPicks[slot.slot_id] ? 1 : 0), 0);
+  const draftProgress = draftSlots.length ? Math.round((draftPickedCount / draftSlots.length) * 100) : 0;
+  const draftSummaryByDay = useMemo(() => {
+    const map = new Map<number, { morning?: Activity; afternoon?: Activity; evening?: Activity }>();
+    for (const slot of draftSlots) {
+      const selected = draftPicks[slot.slot_id];
+      if (!selected) {
+        continue;
+      }
+      const day = map.get(slot.day) ?? {};
+      if (slot.slot === "morning") {
+        day.morning = selected;
+      } else if (slot.slot === "afternoon") {
+        day.afternoon = selected;
+      } else if (slot.slot === "evening") {
+        day.evening = selected;
+      }
+      map.set(slot.day, day);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([day, picks]) => ({ day, picks }));
+  }, [draftSlots, draftPicks]);
+  const savedDraftSummaryByDay = useMemo(() => {
+    const map = new Map<number, { morning?: Activity; afternoon?: Activity; evening?: Activity }>();
+    for (const selection of savedDraftPlan?.selections ?? []) {
+      const day = map.get(selection.day) ?? {};
+      if (selection.slot === "morning") {
+        day.morning = selection.activity;
+      } else if (selection.slot === "afternoon") {
+        day.afternoon = selection.activity;
+      } else if (selection.slot === "evening") {
+        day.evening = selection.activity;
+      }
+      map.set(selection.day, day);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([day, picks]) => ({ day, picks }));
+  }, [savedDraftPlan]);
 
   useEffect(() => {
     if (inviteToken) {
@@ -48,12 +102,14 @@ export default function TripPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [tripData, itineraryData] = await Promise.all([
+        const [tripData, itineraryData, savedDraft] = await Promise.all([
           api.getTrip(tripId),
-          api.getItinerary(tripId).catch(() => null)
+          api.getItinerary(tripId).catch(() => null),
+          api.getDraftPlan(tripId).catch(() => null),
         ]);
         setTrip(tripData);
         setItinerary(itineraryData);
+        setSavedDraftPlan(savedDraft);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load trip");
       }
@@ -65,6 +121,7 @@ export default function TripPage() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    setStatusMessage("");
     try {
       const updated = await api.joinTrip(tripId, {
         name: participantName,
@@ -87,6 +144,7 @@ export default function TripPage() {
   const onGenerate = async () => {
     setBusy(true);
     setError("");
+    setStatusMessage("");
     try {
       const generated = await api.generateItinerary(tripId);
       setItinerary(generated);
@@ -94,6 +152,84 @@ export default function TripPage() {
       setError(err instanceof Error ? err.message : "Failed to generate itinerary");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onStartDraft = async () => {
+    setBusy(true);
+    setError("");
+    setStatusMessage("");
+    try {
+      const generatedDraft = await api.getDraftSlots(tripId);
+      if (!generatedDraft.slots.length) {
+        throw new Error("No draft candidates available. Try adding more participants or changing trip details.");
+      }
+      const prefills: Record<string, Activity> = {};
+      for (const selection of savedDraftPlan?.selections ?? []) {
+        prefills[selection.slot_id] = selection.activity;
+      }
+      const firstUnpickedIndex = generatedDraft.slots.findIndex((slot) => !prefills[slot.slot_id]);
+
+      setDraft(generatedDraft);
+      setDraftPicks(prefills);
+      setDraftIndex(firstUnpickedIndex === -1 ? generatedDraft.slots.length : firstUnpickedIndex);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate slot draft");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onPickCandidate = (activity: Activity) => {
+    if (!currentDraftSlot) {
+      return;
+    }
+    setDraftPicks((prev) => ({ ...prev, [currentDraftSlot.slot_id]: activity }));
+    setDraftIndex((prev) => Math.min(prev + 1, draftSlots.length));
+  };
+
+  const onBackDraftSlot = () => {
+    setDraftIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const onRedraft = () => {
+    setStatusMessage("");
+    setDraftPicks({});
+    setDraftIndex(0);
+  };
+
+  const onSaveDraftPlan = async () => {
+    if (!draft || !draftComplete) {
+      setError("Complete all slot picks before saving.");
+      return;
+    }
+
+    const selections = draft.slots
+      .map((slot) => {
+        const activity = draftPicks[slot.slot_id];
+        if (!activity) {
+          return null;
+        }
+        return {
+          slot_id: slot.slot_id,
+          day: slot.day,
+          slot: slot.slot,
+          activity,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => !!item);
+
+    setSaveBusy(true);
+    setError("");
+    setStatusMessage("");
+    try {
+      const saved = await api.saveDraftPlan(tripId, { selections });
+      setSavedDraftPlan(saved);
+      setStatusMessage("Draft plan saved and shareable with everyone on this trip.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save draft plan");
+    } finally {
+      setSaveBusy(false);
     }
   };
 
@@ -133,6 +269,7 @@ export default function TripPage() {
           </p>
         )}
         {error && <p className="error-text mt-3">{error}</p>}
+        {statusMessage && <p className="mt-3 text-sm font-semibold text-[var(--brand)]">{statusMessage}</p>}
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
@@ -220,10 +357,153 @@ export default function TripPage() {
           <button onClick={onGenerate} className="secondary-btn mt-6 w-full" disabled={busy}>
             {busy ? "Generating..." : "Generate Itinerary Options"}
           </button>
+          <button onClick={onStartDraft} className="primary-btn mt-3 w-full" disabled={busy}>
+            {busy ? "Preparing Draft..." : "Start Draft Pick Builder"}
+          </button>
         </div>
 
         <div className="panel fade-up p-6 md:p-7">
-          <h2 className="font-[var(--font-heading)] text-2xl font-semibold">Itinerary Options</h2>
+          <h2 className="font-[var(--font-heading)] text-2xl font-semibold">Draft Builder</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            Pick one option for each day slot. You get 3-4 card choices per slot, like a draft round.
+          </p>
+
+          {!draft && (
+            <div className="mt-5 rounded-xl border border-[var(--line-strong)] bg-[var(--surface-soft)] p-5">
+              <p className="text-sm text-[var(--muted)]">
+                Start draft mode after preferences are set. The system will generate slot-by-slot choices for every day.
+              </p>
+              <button onClick={onStartDraft} className="primary-btn mt-4" disabled={busy}>
+                {busy ? "Preparing..." : "Generate Draft Slots"}
+              </button>
+            </div>
+          )}
+
+          {draft && currentDraftSlot && (
+            <div className="mt-5 rounded-xl border border-[var(--line-strong)] bg-[var(--surface-soft)] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-[var(--font-heading)] text-xl font-semibold">
+                  Day {currentDraftSlot.day} - {slotLabel[currentDraftSlot.slot]}
+                </h3>
+                <span className="rounded-full border border-[var(--line-strong)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">
+                  Slot {Math.min(draftIndex + 1, draftSlots.length)} / {draftSlots.length}
+                </span>
+              </div>
+              <div className="score-track mt-3">
+                <span className="score-fill" style={{ width: `${draftProgress}%` }} />
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                {currentDraftSlot.candidates.map((candidate) => {
+                  const selected = draftPicks[currentDraftSlot.slot_id]?.name === candidate.name;
+                  return (
+                    <article
+                      key={`${currentDraftSlot.slot_id}-${candidate.name}`}
+                      className={`rounded-xl border bg-[var(--surface)] p-4 shadow-sm transition-shadow hover:shadow-md ${
+                        selected ? "border-[var(--brand)]" : "border-[var(--line)]"
+                      }`}
+                    >
+                      {candidate.image_url && (
+                        <div className="-mx-4 -mt-4 mb-4 h-36 overflow-hidden rounded-t-xl bg-[var(--surface-soft)]">
+                          <img
+                            src={candidate.image_url}
+                            alt={candidate.name}
+                            className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[var(--ink)]">{candidate.name}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)] capitalize">
+                            {candidate.category}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-[var(--line-strong)] bg-[var(--surface-soft)] px-2.5 py-1 text-xs font-medium text-[var(--muted)]">
+                          {candidate.rating.toFixed(1)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-[var(--muted)]">
+                        {Array(Math.max(1, candidate.price_level)).fill("$").join("")}
+                        {candidate.estimated_price ? ` | ${candidate.estimated_price}` : ""}
+                      </p>
+                      <button onClick={() => onPickCandidate(candidate)} className="primary-btn mt-4 w-full">
+                        Pick This
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <button onClick={onBackDraftSlot} className="secondary-btn" disabled={draftIndex === 0}>
+                  Previous Slot
+                </button>
+                <button onClick={onRedraft} className="secondary-btn">
+                  Restart Draft
+                </button>
+              </div>
+            </div>
+          )}
+
+          {draft && !currentDraftSlot && draftComplete && (
+            <div className="mt-5 rounded-xl border border-[var(--line-strong)] bg-[var(--surface-soft)] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-[var(--font-heading)] text-xl font-semibold">Draft Complete</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={onSaveDraftPlan} className="primary-btn" disabled={saveBusy}>
+                    {saveBusy ? "Saving..." : "Save Draft Plan"}
+                  </button>
+                  <button onClick={onRedraft} className="secondary-btn">Draft Again</button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-4">
+                {draftSummaryByDay.map(({ day, picks }) => (
+                  <div key={`draft-day-${day}`} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
+                    <h4 className="font-[var(--font-heading)] text-lg font-semibold">Day {day}</h4>
+                    {[
+                      { label: "Morning", activity: picks.morning },
+                      { label: "Afternoon", activity: picks.afternoon },
+                      { label: "Evening", activity: picks.evening },
+                    ].map((slot) => (
+                      <div key={`${day}-${slot.label}`} className="mt-3 rounded-lg border border-[var(--line)] px-3 py-2">
+                        <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{slot.label}</p>
+                        <p className="mt-1 text-sm font-semibold text-[var(--ink)]">{slot.activity?.name ?? "Open slot"}</p>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {savedDraftPlan && (
+            <div className="mt-5 rounded-xl border border-[var(--line-strong)] bg-[var(--surface-soft)] p-5">
+              <h3 className="font-[var(--font-heading)] text-xl font-semibold">Saved Draft Plan</h3>
+              <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)]">
+                Last saved {savedDraftPlan.saved_at}
+              </p>
+              <div className="mt-4 grid gap-4">
+                {savedDraftSummaryByDay.map(({ day, picks }) => (
+                  <div key={`saved-draft-day-${day}`} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
+                    <h4 className="font-[var(--font-heading)] text-lg font-semibold">Day {day}</h4>
+                    {[
+                      { label: "Morning", activity: picks.morning },
+                      { label: "Afternoon", activity: picks.afternoon },
+                      { label: "Evening", activity: picks.evening },
+                    ].map((slot) => (
+                      <div key={`${day}-saved-${slot.label}`} className="mt-3 rounded-lg border border-[var(--line)] px-3 py-2">
+                        <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{slot.label}</p>
+                        <p className="mt-1 text-sm font-semibold text-[var(--ink)]">{slot.activity?.name ?? "Open slot"}</p>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h2 className="mt-8 font-[var(--font-heading)] text-2xl font-semibold">Itinerary Options</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">Three pacing styles generated from real nearby places.</p>
 
           {trip?.accommodation_address && (

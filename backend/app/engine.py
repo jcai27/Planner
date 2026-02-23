@@ -14,6 +14,9 @@ from .places_client import GooglePlacesClient
 from .schemas import (
     Activity,
     DayPlan,
+    DraftSchedule,
+    DraftSlot,
+    DraftSlotName,
     INTEREST_KEYS,
     ItineraryOption,
     ItineraryResult,
@@ -39,6 +42,11 @@ STYLE_SETTINGS = {
     "packed": {"max_activities": 4, "distance_weight": 1.0, "downtime": 0.0},
     "balanced": {"max_activities": 3, "distance_weight": 1.1, "downtime": 0.1},
     "chill": {"max_activities": 2, "distance_weight": 1.3, "downtime": 0.25},
+}
+SLOT_CATEGORY_PRIORITIES: dict[DraftSlotName, set[str]] = {
+    DraftSlotName.morning: {"museum", "park", "landmark", "culture", "hike", "food", "restaurant"},
+    DraftSlotName.afternoon: {"food", "restaurant", "museum", "park", "landmark", "culture", "spa"},
+    DraftSlotName.evening: {"bar", "nightclub", "relaxation", "spa", "food", "restaurant", "landmark"},
 }
 
 STATIC_ACTIVITY_LIBRARY = {
@@ -121,6 +129,51 @@ class ItineraryEngine:
             trip_id=trip.id,
             generated_at=datetime.utcnow().isoformat(),
             options=options,
+        )
+
+    def generate_slot_draft(self, trip: Trip, choices_per_slot: int = 4) -> DraftSchedule:
+        if not trip.participants:
+            raise ValueError("At least one participant is required before drafting schedule slots")
+
+        slots_per_day = [DraftSlotName.morning, DraftSlotName.afternoon, DraftSlotName.evening]
+        candidate_count = max(3, min(choices_per_slot, 4))
+
+        group_interest_vector = self._aggregate_interests(trip.participants)
+        wake_profile = Counter([p.wake_preference for p in trip.participants])
+        schedule_profile = Counter([p.schedule_preference for p in trip.participants])
+        dominant_style = schedule_profile.most_common(1)[0][0]
+
+        activities = self._fetch_activities(trip.destination, trip.accommodation_lat, trip.accommodation_lng)
+        scored = self._score_activities(activities, group_interest_vector, trip, wake_profile, dominant_style)
+        day_count = (trip.end_date - trip.start_date).days + 1
+
+        if not scored:
+            return DraftSchedule(trip_id=trip.id, generated_at=datetime.utcnow().isoformat(), slots=[])
+
+        slots: List[DraftSlot] = []
+        primary_used_names: set[str] = set()
+
+        for day in range(1, day_count + 1):
+            for slot_name in slots_per_day:
+                ranked = self._rank_slot_candidates(scored, slot_name, primary_used_names)
+                candidates = [activity.model_copy() for activity, _ in ranked[:candidate_count]]
+                if not candidates:
+                    continue
+
+                primary_used_names.add(candidates[0].name)
+                slots.append(
+                    DraftSlot(
+                        slot_id=f"day-{day}-{slot_name.value}",
+                        day=day,
+                        slot=slot_name,
+                        candidates=candidates,
+                    )
+                )
+
+        return DraftSchedule(
+            trip_id=trip.id,
+            generated_at=datetime.utcnow().isoformat(),
+            slots=slots,
         )
 
     def _aggregate_interests(self, participants: Iterable[Participant]) -> Dict[str, float]:
@@ -240,6 +293,45 @@ class ItineraryEngine:
         for idx in range(len(clusters)):
             clusters[idx] = sorted(clusters[idx], key=lambda a: scores.get(a.name, 0), reverse=True)
         return clusters
+
+    def _rank_slot_candidates(
+        self,
+        scored_activities: List[tuple[Activity, float]],
+        slot_name: DraftSlotName,
+        primary_used_names: set[str],
+    ) -> List[tuple[Activity, float]]:
+        preferred_categories = SLOT_CATEGORY_PRIORITIES[slot_name]
+        ranked: List[tuple[Activity, float]] = []
+
+        def slot_multiplier(activity: Activity) -> float:
+            multiplier = 1.2 if activity.category in preferred_categories else 0.92
+            if slot_name == DraftSlotName.morning and activity.category in {"bar", "nightclub"}:
+                multiplier *= 0.75
+            if slot_name == DraftSlotName.evening and activity.category in {"museum", "landmark", "culture"}:
+                multiplier *= 0.88
+            return multiplier
+
+        seen_names: set[str] = set()
+
+        for activity, score in scored_activities:
+            if activity.name in primary_used_names:
+                continue
+            seen_names.add(activity.name)
+            ranked.append((activity, score * slot_multiplier(activity)))
+
+        ranked.sort(key=lambda item: item[1], reverse=True)
+
+        if len(ranked) >= 4:
+            return ranked
+
+        for activity, score in scored_activities:
+            if activity.name in seen_names:
+                continue
+            seen_names.add(activity.name)
+            ranked.append((activity, score * slot_multiplier(activity)))
+
+        ranked.sort(key=lambda item: item[1], reverse=True)
+        return ranked
 
     def _build_option(
         self,

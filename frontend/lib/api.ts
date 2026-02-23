@@ -1,4 +1,4 @@
-import { ItineraryResult, Trip, TripCreateResponse } from "@/lib/types";
+import { DraftPlan, DraftSelection, DraftSchedule, ItineraryResult, Trip, TripCreateResponse } from "@/lib/types";
 
 const API_BASE = "/api/backend";
 const TOKEN_STORAGE_PREFIX = "trip-token:";
@@ -114,5 +114,20 @@ export const api = {
 
   getItinerary(tripId: string) {
     return tripReq<ItineraryResult>(tripId, `/trip/${tripId}/itinerary`);
+  },
+
+  getDraftSlots(tripId: string) {
+    return tripReq<DraftSchedule>(tripId, `/trip/${tripId}/draft_slots`);
+  },
+
+  saveDraftPlan(tripId: string, payload: { selections: DraftSelection[] }) {
+    return tripReq<DraftPlan>(tripId, `/trip/${tripId}/draft_plan`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getDraftPlan(tripId: string) {
+    return tripReq<DraftPlan>(tripId, `/trip/${tripId}/draft_plan`);
   }
 };

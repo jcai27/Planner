@@ -248,6 +248,122 @@ def test_geocode_endpoint_rejects_short_query():
     assert resp.status_code == 422
 
 
+def test_draft_slots_returns_three_slots_per_day():
+    with TestClient(app) as client:
+        create_resp = client.post(
+            "/trip/create",
+            json={
+                "destination": "Paris",
+                "start_date": "2026-05-10",
+                "end_date": "2026-05-11",
+                "accommodation_address": "Eiffel Tower, Paris",
+                "accommodation_lat": 48.8584,
+                "accommodation_lng": 2.2945,
+            },
+        )
+        assert create_resp.status_code == 200
+        trip = create_resp.json()
+        trip_id = trip["id"]
+        join_code = trip["join_code"]
+
+        join_resp = client.post(
+            f"/trip/{trip_id}/join",
+            json={
+                "name": "Ava",
+                "interest_vector": {
+                    "food": 5,
+                    "nightlife": 2,
+                    "culture": 4,
+                    "outdoors": 3,
+                    "relaxation": 2,
+                },
+                "schedule_preference": "balanced",
+                "wake_preference": "normal",
+            },
+            headers=auth_headers(join_code),
+        )
+        assert join_resp.status_code == 200
+
+        draft_resp = client.get(f"/trip/{trip_id}/draft_slots", headers=auth_headers(join_code))
+        assert draft_resp.status_code == 200
+        payload = draft_resp.json()
+        assert payload["trip_id"] == trip_id
+        assert len(payload["slots"]) == 6  # 2 days x 3 slots/day
+        for slot in payload["slots"]:
+            assert slot["slot"] in {"morning", "afternoon", "evening"}
+            assert 1 <= len(slot["candidates"]) <= 4
+
+
+def test_draft_plan_can_be_saved_and_retrieved():
+    with TestClient(app) as client:
+        create_resp = client.post(
+            "/trip/create",
+            json={
+                "destination": "Paris",
+                "start_date": "2026-05-10",
+                "end_date": "2026-05-11",
+                "accommodation_address": "Eiffel Tower, Paris",
+                "accommodation_lat": 48.8584,
+                "accommodation_lng": 2.2945,
+            },
+        )
+        assert create_resp.status_code == 200
+        trip = create_resp.json()
+        trip_id = trip["id"]
+        join_code = trip["join_code"]
+
+        join_resp = client.post(
+            f"/trip/{trip_id}/join",
+            json={
+                "name": "Ava",
+                "interest_vector": {
+                    "food": 5,
+                    "nightlife": 2,
+                    "culture": 4,
+                    "outdoors": 3,
+                    "relaxation": 2,
+                },
+                "schedule_preference": "balanced",
+                "wake_preference": "normal",
+            },
+            headers=auth_headers(join_code),
+        )
+        assert join_resp.status_code == 200
+
+        draft_resp = client.get(f"/trip/{trip_id}/draft_slots", headers=auth_headers(join_code))
+        assert draft_resp.status_code == 200
+        slots = draft_resp.json()["slots"]
+        assert slots
+
+        selections = [
+            {
+                "slot_id": slot["slot_id"],
+                "day": slot["day"],
+                "slot": slot["slot"],
+                "activity": slot["candidates"][0],
+            }
+            for slot in slots
+            if slot["candidates"]
+        ]
+
+        save_resp = client.post(
+            f"/trip/{trip_id}/draft_plan",
+            json={"selections": selections},
+            headers=auth_headers(join_code),
+        )
+        assert save_resp.status_code == 200
+        saved_payload = save_resp.json()
+        assert saved_payload["trip_id"] == trip_id
+        assert len(saved_payload["selections"]) == len(selections)
+
+        fetch_resp = client.get(f"/trip/{trip_id}/draft_plan", headers=auth_headers(join_code))
+        assert fetch_resp.status_code == 200
+        fetched_payload = fetch_resp.json()
+        assert fetched_payload["trip_id"] == trip_id
+        assert len(fetched_payload["selections"]) == len(selections)
+        assert fetched_payload["selections"][0]["slot_id"] == selections[0]["slot_id"]
+
+
 def test_cors_defaults_include_local_dev_and_vercel_preview_regex(monkeypatch):
     monkeypatch.delenv("CORS_ALLOW_ORIGINS", raising=False)
     monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)

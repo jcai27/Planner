@@ -6,8 +6,8 @@ from typing import Generator, Optional
 from sqlalchemy import select
 
 from .db import SessionLocal
-from .models import ItineraryModel, ParticipantModel, TripModel
-from .schemas import ItineraryResult, Participant, Trip, TripCreateResponse
+from .models import DraftPlanModel, ItineraryModel, ParticipantModel, TripModel
+from .schemas import DraftPlan, ItineraryResult, Participant, Trip, TripCreateResponse
 
 
 class SqlRepository:
@@ -111,3 +111,27 @@ class SqlRepository:
             if not model:
                 return None
             return ItineraryResult.model_validate(model.payload)
+
+    def save_draft_plan(self, trip_id: str, draft_plan: DraftPlan) -> DraftPlan:
+        with self.session() as db:
+            model = db.get(DraftPlanModel, trip_id)
+            payload = draft_plan.model_dump()
+            if model:
+                model.saved_at = draft_plan.saved_at
+                model.payload = payload
+            else:
+                db.add(
+                    DraftPlanModel(
+                        trip_id=trip_id,
+                        saved_at=draft_plan.saved_at,
+                        payload=payload,
+                    )
+                )
+        return draft_plan
+
+    def get_draft_plan(self, trip_id: str) -> Optional[DraftPlan]:
+        with self.session() as db:
+            model = db.execute(select(DraftPlanModel).where(DraftPlanModel.trip_id == trip_id)).scalar_one_or_none()
+            if not model:
+                return None
+            return DraftPlan.model_validate(model.payload)
