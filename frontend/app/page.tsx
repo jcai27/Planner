@@ -10,8 +10,7 @@ export default function HomePage() {
   const [destination, setDestination] = useState("Paris");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [lat, setLat] = useState("48.8566");
-  const [lng, setLng] = useState("2.3522");
+  const [address, setAddress] = useState("Eiffel Tower, Paris");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -20,12 +19,25 @@ export default function HomePage() {
     setError("");
     setIsSaving(true);
     try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`, {
+        headers: { "User-Agent": "PlannerApp/1.0" }
+      });
+      if (!res.ok) throw new Error("Failed to contact geocoding service");
+      const data = await res.json();
+
+      if (!data || data.length === 0) {
+        throw new Error("Address not found. Please try a more specific address or notable landmark.");
+      }
+
+      const accommodation_lat = Number(data[0].lat);
+      const accommodation_lng = Number(data[0].lon);
+
       const trip = await api.createTrip({
         destination,
         start_date: startDate,
         end_date: endDate,
-        accommodation_lat: Number(lat),
-        accommodation_lng: Number(lng)
+        accommodation_lat,
+        accommodation_lng
       });
       api.saveTripAccess(trip.id, trip.owner_token, trip.join_code);
       router.push(`/trip/${trip.id}`);
@@ -38,10 +50,10 @@ export default function HomePage() {
 
   return (
     <main className="page-shell">
-      <div className="grid gap-5 lg:grid-cols-[1.02fr_0.98fr]">
-        <section className="panel fade-up p-7 md:p-9">
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="panel fade-up p-8 md:p-12">
           <p className="badge">Group Itinerary Planner</p>
-          <h1 className="hero-title mt-5 text-4xl sm:text-5xl">Simple trip planning for groups.</h1>
+          <h1 className="hero-title mt-6 text-4xl sm:text-5xl lg:text-6xl">Simple trip planning for groups.</h1>
           <p className="hero-copy mt-4">
             Create one shared workspace, collect preferences from everyone, and generate itinerary options from real places.
           </p>
@@ -62,13 +74,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="panel fade-up p-7 md:p-8">
-          <h2 className="font-[var(--font-heading)] text-2xl font-semibold tracking-tight">Create Trip Base</h2>
+        <section className="panel fade-up p-8 md:p-12">
+          <h2 className="font-[var(--font-heading)] text-3xl font-bold tracking-tight">Create Trip Base</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
             This creates your workspace and stores owner access in your browser.
           </p>
 
-          <form onSubmit={onSubmit} className="mt-6 grid gap-4 md:grid-cols-2">
+          <form onSubmit={onSubmit} className="mt-8 grid gap-6 md:grid-cols-2">
             <label className="grid gap-2 md:col-span-2">
               <span className="field-label">Destination City</span>
               <input className="field-input" value={destination} onChange={(e) => setDestination(e.target.value)} required />
@@ -84,31 +96,19 @@ export default function HomePage() {
               <input type="date" className="field-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
             </label>
 
-            <label className="grid gap-2">
-              <span className="field-label">Accommodation Latitude</span>
+            <label className="grid gap-2 md:col-span-2">
+              <span className="field-label">Accommodation Address</span>
               <input
-                type="number"
-                step="any"
+                type="text"
                 className="field-input"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="e.g. 123 Main St, Central Hotel..."
                 required
               />
             </label>
 
-            <label className="grid gap-2">
-              <span className="field-label">Accommodation Longitude</span>
-              <input
-                type="number"
-                step="any"
-                className="field-input"
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-                required
-              />
-            </label>
-
-            <button type="submit" className="primary-btn mt-1 md:col-span-2" disabled={isSaving}>
+            <button type="submit" className="primary-btn mt-4 md:col-span-2" disabled={isSaving}>
               {isSaving ? "Creating Workspace..." : "Create Trip Workspace"}
             </button>
             {error && <p className="error-text md:col-span-2">{error}</p>}
