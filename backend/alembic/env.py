@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from app.db import Base, DATABASE_URL
 from app import models  # noqa: F401
@@ -13,7 +17,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# ConfigParser interpolation treats '%' specially, so escape it for Alembic config.
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

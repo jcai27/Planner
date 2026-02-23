@@ -24,6 +24,8 @@ Optional LLM explanations:
 1. copy `backend/.env.example` to `backend/.env`
 2. set `DATABASE_URL` for Postgres/Supabase (or omit for local SQLite `planner.db`)
 3. set `OPENAI_API_KEY` (optional)
+4. set `CORS_ALLOW_ORIGINS` (comma-separated origins; defaults to `http://localhost:3000`)
+5. set `GOOGLE_PLACES_API_KEY` to pull real places/activities from Google Places (optional but recommended)
 
 ## Database migrations (Alembic)
 
@@ -53,22 +55,22 @@ Open `http://localhost:3000`.
 
 ## Implemented endpoints
 
-- `POST /trip/create`
-- `POST /trip/{id}/join`
-- `GET /trip/{id}`
-- `POST /trip/{id}/generate_itinerary`
-- `GET /trip/{id}/itinerary`
+- `POST /trip/create` (returns `owner_token` and `join_code`)
+- `POST /trip/{id}/join` (requires header `X-Trip-Token`)
+- `GET /trip/{id}` (requires header `X-Trip-Token`)
+- `POST /trip/{id}/generate_itinerary` (requires header `X-Trip-Token`)
+- `GET /trip/{id}/itinerary` (requires header `X-Trip-Token`)
 
 ## Notes
 
 - Persistence now uses SQLAlchemy with `DATABASE_URL` (Postgres/Supabase-ready).
 - If `DATABASE_URL` is not set, backend falls back to local SQLite (`backend/planner.db`).
-- Activity retrieval uses a curated static dataset with coordinate fallback around accommodation.
+- Activity retrieval uses Google Places when `GOOGLE_PLACES_API_KEY` is set; otherwise it falls back to a curated static dataset.
 - Explanation layer uses OpenAI only if key is provided; otherwise deterministic summary text is returned.
 
 ## Tests
 
 ```bash
 cd backend
-pytest -q
+python -m pytest -q
 ```

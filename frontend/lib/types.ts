@@ -27,6 +27,11 @@ export type Trip = {
   participants: Participant[];
 };
 
+export type TripCreateResponse = Trip & {
+  owner_token: string;
+  join_code: string;
+};
+
 export type Activity = {
   name: string;
   category: string;

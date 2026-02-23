@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List
 import numpy as np
 from openai import OpenAI
 
+from .places_client import GooglePlacesClient
 from .schemas import (
     Activity,
     DayPlan,
@@ -71,6 +72,19 @@ STATIC_ACTIVITY_LIBRARY = {
 class ItineraryEngine:
     def __init__(self) -> None:
         self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+        google_places_key = os.getenv("GOOGLE_PLACES_API_KEY")
+        self.google_places_client = (
+            GooglePlacesClient(
+                api_key=google_places_key,
+                radius_meters=int(os.getenv("GOOGLE_PLACES_RADIUS_METERS", "6000")),
+                max_results_per_type=int(os.getenv("GOOGLE_PLACES_MAX_RESULTS_PER_TYPE", "8")),
+                max_total_results=int(os.getenv("GOOGLE_PLACES_MAX_TOTAL_RESULTS", "40")),
+                timeout_seconds=float(os.getenv("GOOGLE_PLACES_TIMEOUT_SECONDS", "6")),
+                cache_ttl_seconds=int(os.getenv("GOOGLE_PLACES_CACHE_TTL_SECONDS", str(6 * 60 * 60))),
+            )
+            if google_places_key
+            else None
+        )
 
     def generate(self, trip: Trip) -> ItineraryResult:
         if not trip.participants:
@@ -81,15 +95,26 @@ class ItineraryEngine:
         wake_profile = Counter([p.wake_preference for p in trip.participants])
 
         activities = self._fetch_activities(trip.destination, trip.accommodation_lat, trip.accommodation_lng)
-        scored = self._score_activities(activities, group_interest_vector, trip, wake_profile)
         day_count = (trip.end_date - trip.start_date).days + 1
-        clustered = self._cluster_by_geo(scored, day_count)
-
-        options = [
-            self._build_option("Packed Experience", "packed", clustered, group_interest_vector, energy_profile, wake_profile, trip),
-            self._build_option("Balanced Exploration", "balanced", clustered, group_interest_vector, energy_profile, wake_profile, trip),
-            self._build_option("Relaxed Trip", "chill", clustered, group_interest_vector, energy_profile, wake_profile, trip),
-        ]
+        options: List[ItineraryOption] = []
+        for name, style in [
+            ("Packed Experience", "packed"),
+            ("Balanced Exploration", "balanced"),
+            ("Relaxed Trip", "chill"),
+        ]:
+            scored = self._score_activities(activities, group_interest_vector, trip, wake_profile, style)
+            clustered = self._cluster_by_geo(scored, day_count)
+            options.append(
+                self._build_option(
+                    name,
+                    style,
+                    clustered,
+                    group_interest_vector,
+                    energy_profile,
+                    wake_profile,
+                    trip,
+                )
+            )
 
         return ItineraryResult(
             trip_id=trip.id,
@@ -107,8 +132,16 @@ class ItineraryEngine:
         return {k: v / size for k, v in counts.items()}
 
     def _fetch_activities(self, destination: str, base_lat: float, base_lng: float) -> List[Activity]:
-        city_key = destination.strip().lower()
-        raw = STATIC_ACTIVITY_LIBRARY.get(city_key)
+        raw = None
+        if self.google_places_client:
+            try:
+                raw = self.google_places_client.fetch_activities(destination, base_lat, base_lng)
+            except Exception:
+                raw = None
+
+        if not raw:
+            city_key = destination.strip().lower()
+            raw = STATIC_ACTIVITY_LIBRARY.get(city_key)
         if not raw:
             raw = self._fallback_activity_set(base_lat, base_lng)
         return [
@@ -141,7 +174,9 @@ class ItineraryEngine:
         group_interest_vector: Dict[str, float],
         trip: Trip,
         wake_profile: Counter,
+        style: str,
     ) -> List[tuple[Activity, float]]:
+        settings = STYLE_SETTINGS[style]
         results: List[tuple[Activity, float]] = []
         wake_mode = wake_profile.most_common(1)[0][0]
         wake_multiplier = {WakePreference.early: 1.0, WakePreference.normal: 0.9, WakePreference.late: 0.8}[wake_mode]
@@ -156,10 +191,13 @@ class ItineraryEngine:
                 activity.latitude,
                 activity.longitude,
             )
-            distance_penalty = 1 / (1 + (distance_km / 5))
+            distance_penalty = 1 / (1 + (distance_km / 5) * settings["distance_weight"])
             time_of_day_fit = wake_multiplier if activity.category in {"museum", "park", "landmark"} else 1.0
+            duration_load = min(1.0, activity.typical_visit_duration / 240)
+            downtime_penalty = max(0.6, 1 - settings["downtime"] * duration_load)
+            style_bias = self._style_activity_bias(style, activity.category)
 
-            score = preference_match * rating_weight * distance_penalty * time_of_day_fit
+            score = preference_match * rating_weight * distance_penalty * time_of_day_fit * downtime_penalty * style_bias
             results.append((activity, score))
 
         return sorted(results, key=lambda x: x[1], reverse=True)
@@ -167,8 +205,13 @@ class ItineraryEngine:
     def _cluster_by_geo(self, scored_activities: List[tuple[Activity, float]], k: int):
         activities = [item[0] for item in scored_activities]
         scores = {item[0].name: item[1] for item in scored_activities}
-        if k <= 1 or len(activities) <= k:
+        if k <= 1:
             return [sorted(activities, key=lambda a: scores[a.name], reverse=True)]
+        if len(activities) <= k:
+            ordered = sorted(activities, key=lambda a: scores[a.name], reverse=True)
+            clusters = [[activity] for activity in ordered]
+            clusters.extend([[] for _ in range(k - len(clusters))])
+            return clusters
 
         coords = np.array([[a.latitude, a.longitude] for a in activities])
         centroids = coords[:k].copy()
@@ -210,7 +253,8 @@ class ItineraryEngine:
             selected = day_activities[:max_acts]
             morning = self._pick_first(selected, {"museum", "park", "landmark", "culture"})
             afternoon = self._pick_first(selected, {"food", "restaurant", "park", "hike"}, exclude={morning.name} if morning else set())
-            dinner = self._pick_first(selected, {"food", "restaurant"}, exclude={morning.name, afternoon.name} if morning and afternoon else set())
+            dinner_exclude = {x.name for x in [morning, afternoon] if x}
+            dinner = self._pick_first(selected, {"food", "restaurant"}, exclude=dinner_exclude)
             evening = self._pick_first(
                 selected,
                 {"bar", "nightclub", "relaxation", "spa"},
@@ -287,6 +331,20 @@ class ItineraryEngine:
             if activity.name not in exclude:
                 return activity
         return None
+
+    @staticmethod
+    def _style_activity_bias(style: str, category: str) -> float:
+        if style == "packed":
+            if category in {"museum", "landmark", "culture", "nightclub", "bar"}:
+                return 1.12
+            if category in {"spa", "relaxation", "beach"}:
+                return 0.93
+        elif style == "chill":
+            if category in {"spa", "relaxation", "park", "beach"}:
+                return 1.15
+            if category in {"nightclub", "bar"}:
+                return 0.85
+        return 1.0
 
     @staticmethod
     def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

@@ -27,6 +27,7 @@ export default function HomePage() {
         accommodation_lat: Number(lat),
         accommodation_lng: Number(lng)
       });
+      api.saveTripAccess(trip.id, trip.owner_token, trip.join_code);
       router.push(`/trip/${trip.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create trip");
@@ -36,46 +37,93 @@ export default function HomePage() {
   };
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <section className="panel fade-up p-8">
-        <p className="mb-2 text-sm uppercase tracking-[0.2em] text-tide">MVP Builder</p>
-        <h1 className="font-[var(--font-heading)] text-4xl font-semibold text-ink">AI Group Itinerary Planner</h1>
-        <p className="mt-3 max-w-2xl text-slate-700">
-          Create a trip, add group preferences, and generate packed, balanced, and relaxed plans optimized by interests and location.
-        </p>
+    <main className="page-shell">
+      <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+        <section className="panel fade-up p-7 md:p-10">
+          <p className="badge">Group Itinerary Studio</p>
+          <h1 className="hero-title mt-5 text-4xl sm:text-5xl lg:text-[3.35rem]">
+            Plan Once.
+            <br />
+            Make Everyone Happy.
+          </h1>
+          <p className="hero-copy mt-5">
+            Build one shared trip hub, collect each person&apos;s preferences, and generate three realistic plans from real nearby places.
+            It is fast enough for planning chats and structured enough for a real trip.
+          </p>
 
-        <form onSubmit={onSubmit} className="mt-8 grid gap-4 md:grid-cols-2">
-          <label className="grid gap-2 text-sm">
-            Destination City
-            <input className="rounded-md border border-slate-300 px-3 py-2" value={destination} onChange={(e) => setDestination(e.target.value)} required />
-          </label>
-          <label className="grid gap-2 text-sm">
-            Accommodation Latitude
-            <input className="rounded-md border border-slate-300 px-3 py-2" value={lat} onChange={(e) => setLat(e.target.value)} required />
-          </label>
-          <label className="grid gap-2 text-sm">
-            Start Date
-            <input type="date" className="rounded-md border border-slate-300 px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
-          </label>
-          <label className="grid gap-2 text-sm">
-            Accommodation Longitude
-            <input className="rounded-md border border-slate-300 px-3 py-2" value={lng} onChange={(e) => setLng(e.target.value)} required />
-          </label>
-          <label className="grid gap-2 text-sm md:col-span-2">
-            End Date
-            <input type="date" className="rounded-md border border-slate-300 px-3 py-2" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
-          </label>
+          <div className="travel-metrics mt-7">
+            <article className="metric-card">
+              <p className="metric-label">Plan Styles</p>
+              <p className="metric-value">3 Distinct</p>
+            </article>
+            <article className="metric-card">
+              <p className="metric-label">Live Places</p>
+              <p className="metric-value">Google Data</p>
+            </article>
+            <article className="metric-card">
+              <p className="metric-label">Shared Access</p>
+              <p className="metric-value">Invite Token</p>
+            </article>
+          </div>
 
-          <button
-            type="submit"
-            className="mt-2 rounded-md bg-tide px-4 py-2 font-semibold text-white transition hover:bg-cyan-800 disabled:opacity-50 md:col-span-2"
-            disabled={isSaving}
-          >
-            {isSaving ? "Creating..." : "Create Trip"}
-          </button>
-          {error && <p className="md:col-span-2 text-sm text-red-700">{error}</p>}
-        </form>
-      </section>
+          <div className="mt-7 grid gap-3 text-sm text-[var(--muted)] sm:grid-cols-3">
+            <p className="rounded-xl border border-[rgba(16,40,58,0.14)] bg-white/70 px-3 py-2">1. Create trip base</p>
+            <p className="rounded-xl border border-[rgba(16,40,58,0.14)] bg-white/70 px-3 py-2">2. Add participant tastes</p>
+            <p className="rounded-xl border border-[rgba(16,40,58,0.14)] bg-white/70 px-3 py-2">3. Generate daily options</p>
+          </div>
+        </section>
+
+        <section className="panel fade-up p-7 md:p-8">
+          <h2 className="font-[var(--font-heading)] text-2xl font-semibold tracking-tight">Create Trip Base</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">This creates your workspace and saves private access credentials locally.</p>
+
+          <form onSubmit={onSubmit} className="mt-6 grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 md:col-span-2">
+              <span className="field-label">Destination City</span>
+              <input className="field-input" value={destination} onChange={(e) => setDestination(e.target.value)} required />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="field-label">Start Date</span>
+              <input type="date" className="field-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="field-label">End Date</span>
+              <input type="date" className="field-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="field-label">Accommodation Latitude</span>
+              <input
+                type="number"
+                step="any"
+                className="field-input"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                required
+              />
+            </label>
+
+            <label className="grid gap-2">
+              <span className="field-label">Accommodation Longitude</span>
+              <input
+                type="number"
+                step="any"
+                className="field-input"
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                required
+              />
+            </label>
+
+            <button type="submit" className="primary-btn mt-1 md:col-span-2" disabled={isSaving}>
+              {isSaving ? "Creating Workspace..." : "Create Trip Workspace"}
+            </button>
+            {error && <p className="error-text md:col-span-2">{error}</p>}
+          </form>
+        </section>
+      </div>
     </main>
   );
 }

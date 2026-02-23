@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from .db import SessionLocal
 from .models import ItineraryModel, ParticipantModel, TripModel
-from .schemas import ItineraryResult, Participant, Trip
+from .schemas import ItineraryResult, Participant, Trip, TripCreateResponse
 
 
 class SqlRepository:
@@ -23,7 +23,7 @@ class SqlRepository:
         finally:
             db.close()
 
-    def create_trip(self, trip: Trip) -> Trip:
+    def create_trip(self, trip: Trip, owner_token: str, join_code: str) -> TripCreateResponse:
         with self.session() as db:
             model = TripModel(
                 id=trip.id,
@@ -32,9 +32,11 @@ class SqlRepository:
                 end_date=trip.end_date,
                 accommodation_lat=trip.accommodation_lat,
                 accommodation_lng=trip.accommodation_lng,
+                owner_token=owner_token,
+                join_code=join_code,
             )
             db.add(model)
-        return trip
+        return TripCreateResponse(**trip.model_dump(), owner_token=owner_token, join_code=join_code)
 
     def get_trip(self, trip_id: str) -> Optional[Trip]:
         with self.session() as db:
@@ -78,6 +80,13 @@ class SqlRepository:
             )
 
         return self.get_trip(trip_id)
+
+    def get_trip_access_tokens(self, trip_id: str) -> Optional[tuple[str, str]]:
+        with self.session() as db:
+            model = db.get(TripModel, trip_id)
+            if not model:
+                return None
+            return model.owner_token, model.join_code
 
     def save_itinerary(self, trip_id: str, itinerary: ItineraryResult) -> None:
         with self.session() as db:

@@ -1,6 +1,8 @@
-import { ItineraryResult, Trip } from "@/lib/types";
+import { ItineraryResult, Trip, TripCreateResponse } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const TOKEN_STORAGE_PREFIX = "trip-token:";
+const JOIN_CODE_STORAGE_PREFIX = "trip-join-code:";
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -19,7 +21,57 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function canUseStorage(): boolean {
+  return typeof window !== "undefined" && !!window.localStorage;
+}
+
+function tokenStorageKey(tripId: string): string {
+  return `${TOKEN_STORAGE_PREFIX}${tripId}`;
+}
+
+function joinCodeStorageKey(tripId: string): string {
+  return `${JOIN_CODE_STORAGE_PREFIX}${tripId}`;
+}
+
+function getStoredTripToken(tripId: string): string | null {
+  if (!canUseStorage()) {
+    return null;
+  }
+  return window.localStorage.getItem(tokenStorageKey(tripId));
+}
+
+function tripReq<T>(tripId: string, path: string, options?: RequestInit): Promise<T> {
+  const tripToken = getStoredTripToken(tripId);
+  if (!tripToken) {
+    throw new Error("Missing trip access token. Open this trip using a valid invite link.");
+  }
+  return req<T>(path, {
+    ...options,
+    headers: {
+      ...(options?.headers || {}),
+      "X-Trip-Token": tripToken
+    }
+  });
+}
+
 export const api = {
+  saveTripAccess(tripId: string, tripToken: string, joinCode?: string) {
+    if (!canUseStorage()) {
+      return;
+    }
+    window.localStorage.setItem(tokenStorageKey(tripId), tripToken);
+    if (joinCode) {
+      window.localStorage.setItem(joinCodeStorageKey(tripId), joinCode);
+    }
+  },
+
+  getSavedJoinCode(tripId: string): string | null {
+    if (!canUseStorage()) {
+      return null;
+    }
+    return window.localStorage.getItem(joinCodeStorageKey(tripId));
+  },
+
   createTrip(payload: {
     destination: string;
     start_date: string;
@@ -27,7 +79,7 @@ export const api = {
     accommodation_lat: number;
     accommodation_lng: number;
   }) {
-    return req<Trip>("/trip/create", {
+    return req<TripCreateResponse>("/trip/create", {
       method: "POST",
       body: JSON.stringify(payload)
     });
@@ -45,21 +97,21 @@ export const api = {
     schedule_preference: "packed" | "balanced" | "chill";
     wake_preference: "early" | "normal" | "late";
   }) {
-    return req<Trip>(`/trip/${tripId}/join`, {
+    return tripReq<Trip>(tripId, `/trip/${tripId}/join`, {
       method: "POST",
       body: JSON.stringify(payload)
     });
   },
 
   getTrip(tripId: string) {
-    return req<Trip>(`/trip/${tripId}`);
+    return tripReq<Trip>(tripId, `/trip/${tripId}`);
   },
 
   generateItinerary(tripId: string) {
-    return req<ItineraryResult>(`/trip/${tripId}/generate_itinerary`, { method: "POST" });
+    return tripReq<ItineraryResult>(tripId, `/trip/${tripId}/generate_itinerary`, { method: "POST" });
   },
 
   getItinerary(tripId: string) {
-    return req<ItineraryResult>(`/trip/${tripId}/itinerary`);
+    return tripReq<ItineraryResult>(tripId, `/trip/${tripId}/itinerary`);
   }
 };

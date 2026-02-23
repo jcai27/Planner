@@ -15,6 +15,8 @@ class TripModel(Base):
     end_date = Column(Date, nullable=False)
     accommodation_lat = Column(Float, nullable=False)
     accommodation_lng = Column(Float, nullable=False)
+    owner_token = Column(String, nullable=False, index=True)
+    join_code = Column(String, nullable=False)
 
     participants = relationship("ParticipantModel", back_populates="trip", cascade="all, delete-orphan")
     itinerary = relationship("ItineraryModel", back_populates="trip", uselist=False, cascade="all, delete-orphan")
