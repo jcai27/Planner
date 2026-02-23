@@ -329,14 +329,15 @@ class ItineraryEngine:
             f"Wake profile: {dict(wake_profile)}. Keep it practical and concise."
         )
         try:
-            completion = self.openai_client.responses.create(
-                model=os.getenv("OPENAI_EXPLANATION_MODEL", "gpt-4.1-mini"),
-                input=prompt,
-                max_output_tokens=100,
+            completion = self.openai_client.chat.completions.create(
+                model=os.getenv("OPENAI_EXPLANATION_MODEL", "gpt-4o-mini"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
             )
-            text = completion.output_text.strip()
+            text = completion.choices[0].message.content.strip()
             return text or fallback
-        except Exception:
+        except Exception as e:
+            print(f"Explanation error: {e}")
             return fallback
 
     def _explain_activities(self, activities: List[Activity], style: str, group_interest_vector: Dict[str, float], trip: Trip) -> Dict[str, str]:
@@ -353,12 +354,12 @@ class ItineraryEngine:
         )
 
         try:
-            completion = self.openai_client.responses.create(
-                model=os.getenv("OPENAI_EXPLANATION_MODEL", "gpt-4.1-mini"),
-                input=prompt,
-                max_output_tokens=1000,
+            completion = self.openai_client.chat.completions.create(
+                model=os.getenv("OPENAI_EXPLANATION_MODEL", "gpt-4o-mini"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,
             )
-            text = completion.output_text.strip()
+            text = completion.choices[0].message.content.strip()
             
             explanations = {}
             for line in text.split('\n'):
@@ -381,7 +382,8 @@ class ItineraryEngine:
                             break
                 result[a.name] = match or f"A great {a.category} option for the group in {trip.destination}."
             return result
-        except Exception:
+        except Exception as e:
+            print(f"Activities explanation error: {e}")
             return {a.name: f"A great {a.category} option for the group in {trip.destination}." for a in activities}
 
     @staticmethod
