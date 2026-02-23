@@ -26,8 +26,13 @@ async def lifespan(_: FastAPI):
 
 def _load_cors_origins() -> list[str]:
     raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000")
-    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    origins = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
     return origins or ["http://localhost:3000"]
+
+
+def _load_cors_origin_regex() -> str | None:
+    raw = (os.getenv("CORS_ALLOW_ORIGIN_REGEX") or "").strip()
+    return raw or None
 
 
 app = FastAPI(title="AI Group Itinerary Planner API", version="0.1.0", lifespan=lifespan)
@@ -35,6 +40,7 @@ app = FastAPI(title="AI Group Itinerary Planner API", version="0.1.0", lifespan=
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_load_cors_origins(),
+    allow_origin_regex=_load_cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -101,32 +101,44 @@ export default function TripPage() {
     <main className="page-shell">
       <section className="panel fade-up p-6 md:p-8">
         <p className="badge">Trip Workspace</p>
-        <h1 className="hero-title mt-4 text-3xl sm:text-4xl">Build the Group Plan</h1>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <h1 className="hero-title mt-4 text-3xl sm:text-4xl">
+          {trip?.destination ? `${trip.destination} plan` : "Build your group plan"}
+        </h1>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="meta-strip">
             <p className="field-label">Trip ID</p>
             <div className="mono-block mt-1">{tripId}</div>
           </div>
+          {trip && (
+            <div className="meta-strip">
+              <p className="field-label">Dates</p>
+              <p className="mt-1 text-sm text-[var(--ink)]">
+                {trip.start_date} to {trip.end_date}
+              </p>
+            </div>
+          )}
           {joinCode && (
             <div className="meta-strip">
-              <p className="field-label">Invite</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">Join code: <span className="font-semibold text-[var(--ink)]">{joinCode}</span></p>
+              <p className="field-label">Invite Code</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--ink)]">{joinCode}</p>
               <div className="mono-block mt-1">{`/trip/${tripId}?token=${joinCode}`}</div>
             </div>
           )}
         </div>
+
         {trip && (
           <p className="mt-4 text-sm text-[var(--muted)]">
-            {trip.destination} | {trip.start_date} to {trip.end_date} | Stay near ({trip.accommodation_lat}, {trip.accommodation_lng})
+            Accommodation coordinates: {trip.accommodation_lat}, {trip.accommodation_lng}
           </p>
         )}
         {error && <p className="error-text mt-3">{error}</p>}
       </section>
 
-      <section className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="panel fade-up p-6 md:p-7">
-          <h2 className="font-[var(--font-heading)] text-2xl font-semibold">People + Preferences</h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">Collect preferences first, then generate options.</p>
+          <h2 className="font-[var(--font-heading)] text-2xl font-semibold">Participants</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">Add everyone first, then generate itinerary options.</p>
 
           <form onSubmit={onJoin} className="mt-5 grid gap-4">
             <label className="grid gap-2">
@@ -141,7 +153,7 @@ export default function TripPage() {
 
             <div className="grid gap-3">
               {interestEntries.map(([key, value]) => (
-                <label className="rounded-xl border border-[rgba(16,40,58,0.14)] bg-white/70 p-3" key={key}>
+                <label className="metric-card" key={key}>
                   <div className="flex items-center justify-between">
                     <span className="field-label">{key}</span>
                     <span className="text-sm font-semibold text-[var(--ink)]">{value}</span>
@@ -198,7 +210,7 @@ export default function TripPage() {
           <ul className="mt-3 grid gap-2 text-sm">
             {trip?.participants?.map((p, idx) => (
               <li key={`${p.name}-${idx}`} className="participant-chip">
-                <p className="font-semibold">{p.name}</p>
+                <p className="font-semibold text-[var(--ink)]">{p.name}</p>
                 <p className="mt-1 text-[var(--muted)]">{p.schedule_preference} pace | {p.wake_preference} wake</p>
               </li>
             ))}
@@ -212,7 +224,7 @@ export default function TripPage() {
 
         <div className="panel fade-up p-6 md:p-7">
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold">Itinerary Options</h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">Each option maps days with different pace and category bias.</p>
+          <p className="mt-2 text-sm text-[var(--muted)]">Three pacing styles generated from real nearby places.</p>
           {!itinerary && <p className="mt-5 text-sm text-[var(--muted)]">No itinerary generated yet.</p>}
 
           <div className="mt-5 grid gap-4">
@@ -220,11 +232,13 @@ export default function TripPage() {
               <article key={option.style} className={`option-card fade-up style-${option.style}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="font-[var(--font-heading)] text-xl font-semibold">{option.name}</h3>
-                  <span className="rounded-full border border-[rgba(16,40,58,0.18)] bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.07em]">
+                  <span className="rounded-full border border-[var(--line-strong)] bg-[var(--surface-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.07em]">
                     Match {option.group_match_score}
                   </span>
                 </div>
-                <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{styleSubtitle[option.style] ?? "Smartly arranged group plan"}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)]">
+                  {styleSubtitle[option.style] ?? "Smartly arranged group plan"}
+                </p>
                 <div className="score-track">
                   <span className="score-fill" style={{ width: `${option.group_match_score}%` }} />
                 </div>
@@ -232,7 +246,7 @@ export default function TripPage() {
 
                 <div className="mt-4 grid gap-3">
                   {option.days.map((day) => (
-                    <div key={day.day} className="rounded-xl border border-[rgba(16,40,58,0.12)] bg-[rgba(255,255,255,0.78)] p-3">
+                    <div key={day.day} className="rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
                       <p className="font-[var(--font-heading)] text-lg font-semibold">Day {day.day}</p>
                       <div className="day-grid">
                         <div className="slot">
