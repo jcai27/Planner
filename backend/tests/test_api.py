@@ -16,6 +16,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{DB_PATH}"
 from app.db import Base, engine
 from app.engine import ItineraryEngine
 from app.main import DEFAULT_CORS_ORIGIN_REGEX, app, _load_cors_origin_regex, _load_cors_origins
+from app.places_client import GooglePlacesClient
 from app.schemas import Activity, Trip
 
 
@@ -291,7 +292,11 @@ def test_draft_slots_returns_three_slots_per_day():
         assert len(payload["slots"]) == 6  # 2 days x 3 slots/day
         for slot in payload["slots"]:
             assert slot["slot"] in {"morning", "afternoon", "evening"}
-            assert 1 <= len(slot["candidates"]) <= 4
+            assert len(slot["candidates"]) == 4
+            if slot["slot"] == "evening":
+                assert all(candidate["category"] in {"food", "restaurant"} for candidate in slot["candidates"])
+            else:
+                assert all(candidate["category"] not in {"food", "restaurant"} for candidate in slot["candidates"])
 
 
 def test_draft_plan_can_be_saved_and_retrieved():
@@ -458,6 +463,65 @@ def test_style_scoring_changes_activity_priority():
 
     assert packed[0][0].name == "Grand Museum"
     assert chill[0][0].name == "Urban Spa"
+
+
+def test_destination_context_boost_changes_activity_priority():
+    itinerary_engine = ItineraryEngine()
+    activities = [
+        Activity(
+            name="City Museum",
+            category="museum",
+            rating=4.7,
+            price_level=2,
+            latitude=48.8600,
+            longitude=2.3400,
+            typical_visit_duration=120,
+        ),
+        Activity(
+            name="Coastal Park",
+            category="park",
+            rating=4.7,
+            price_level=1,
+            latitude=48.8601,
+            longitude=2.3401,
+            typical_visit_duration=120,
+        ),
+    ]
+    trip = Trip(
+        id="destination-boost-test",
+        destination="Hawaii",
+        start_date=date(2026, 5, 1),
+        end_date=date(2026, 5, 1),
+        accommodation_lat=48.8566,
+        accommodation_lng=2.3522,
+        participants=[],
+    )
+    group_interest_vector = {"food": 2.0, "nightlife": 2.0, "culture": 4.0, "outdoors": 4.0, "relaxation": 3.0}
+    wake_profile = Counter(["normal"])
+
+    ranked = itinerary_engine._score_activities(
+        activities=activities,
+        group_interest_vector=group_interest_vector,
+        trip=trip,
+        wake_profile=wake_profile,
+        style="balanced",
+        destination_category_boosts={"museum": 0.85, "park": 1.3},
+    )
+
+    assert ranked[0][0].name == "Coastal Park"
+
+
+def test_hawaii_heuristic_boosts_outdoors_over_museums():
+    itinerary_engine = ItineraryEngine()
+    boosts = itinerary_engine._heuristic_destination_category_boosts("Hawaii", ["museum", "park", "spa"])
+    assert boosts["park"] > boosts["museum"]
+    assert boosts["spa"] >= 1.1
+
+
+def test_fast_food_filter_identifies_low_quality_restaurant_candidates():
+    assert GooglePlacesClient._is_fast_food_place("McDonald's", {"restaurant"})
+    assert GooglePlacesClient._is_fast_food_place("Quick Bite", {"meal_takeaway", "restaurant"})
+    assert not GooglePlacesClient._is_fast_food_place("Neighborhood Bistro", {"restaurant"})
 
 
 def test_fetch_activities_uses_google_places_when_available():

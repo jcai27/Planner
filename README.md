@@ -26,6 +26,7 @@ Optional LLM explanations:
 3. set `OPENAI_API_KEY` (optional)
 4. set `CORS_ALLOW_ORIGINS` (comma-separated origins; defaults to `http://localhost:3000`)
 5. set `GOOGLE_PLACES_API_KEY` to pull real places/activities from Google Places (optional but recommended)
+6. set `OPENAI_DESTINATION_RERANK_MODEL` to control AI destination rerank model (defaults to `OPENAI_EXPLANATION_MODEL`)
 
 ## Database migrations (Alembic)
 

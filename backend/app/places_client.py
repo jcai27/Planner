@@ -10,6 +10,30 @@ from urllib.request import Request, urlopen
 
 
 RawActivity = Tuple[str, str, float, int, float, float, int, str, str, str]
+FAST_FOOD_KEYWORDS = {
+    "mcdonald",
+    "burger king",
+    "kfc",
+    "taco bell",
+    "wendy's",
+    "popeyes",
+    "subway",
+    "domino",
+    "pizza hut",
+    "chipotle",
+    "five guys",
+    "in-n-out",
+    "shake shack",
+    "dunkin",
+    "starbucks",
+    "fast food",
+}
+DISALLOWED_RESTAURANT_TYPES = {
+    "meal_takeaway",
+    "meal_delivery",
+    "convenience_store",
+    "gas_station",
+}
 
 
 @dataclass(frozen=True)
@@ -60,10 +84,14 @@ class GooglePlacesClient:
             for place in results[: self.max_results_per_type]:
                 place_id = place.get("place_id")
                 name = place.get("name")
+                place_types = {str(t).lower() for t in (place.get("types") or []) if t}
                 loc = (place.get("geometry") or {}).get("location") or {}
                 place_lat = loc.get("lat")
                 place_lng = loc.get("lng")
                 if not place_id or not name or place_lat is None or place_lng is None:
+                    continue
+
+                if type_config.google_type == "restaurant" and self._is_fast_food_place(str(name), place_types):
                     continue
 
                 rating = float(place.get("rating") or 4.2)
@@ -131,3 +159,12 @@ class GooglePlacesClient:
     @staticmethod
     def _cache_key(destination: str, lat: float, lng: float) -> str:
         return f"{destination.strip().lower()}:{lat:.3f}:{lng:.3f}"
+
+    @staticmethod
+    def _is_fast_food_place(name: str, place_types: set[str]) -> bool:
+        lowered_name = name.strip().lower()
+        if any(keyword in lowered_name for keyword in FAST_FOOD_KEYWORDS):
+            return True
+        if place_types.intersection(DISALLOWED_RESTAURANT_TYPES):
+            return True
+        return False

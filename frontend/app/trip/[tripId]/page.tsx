@@ -46,7 +46,7 @@ export default function TripPage() {
   const slotLabel: Record<string, string> = {
     morning: "Morning",
     afternoon: "Afternoon",
-    evening: "Evening"
+    evening: "Dinner"
   };
   const draftSlots = draft?.slots ?? [];
   const currentDraftSlot = draftSlots[draftIndex] ?? null;
@@ -365,7 +365,7 @@ export default function TripPage() {
         <div className="panel fade-up p-6 md:p-7">
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold">Draft Builder</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Pick one option for each day slot. You get 3-4 card choices per slot, like a draft round.
+            Pick one option for each day slot. Morning and afternoon rounds show activity options, dinner rounds show restaurant options.
           </p>
 
           {!draft && (
@@ -464,7 +464,7 @@ export default function TripPage() {
                     {[
                       { label: "Morning", activity: picks.morning },
                       { label: "Afternoon", activity: picks.afternoon },
-                      { label: "Evening", activity: picks.evening },
+                      { label: "Dinner", activity: picks.evening },
                     ].map((slot) => (
                       <div key={`${day}-${slot.label}`} className="mt-3 rounded-lg border border-[var(--line)] px-3 py-2">
                         <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{slot.label}</p>
@@ -490,7 +490,7 @@ export default function TripPage() {
                     {[
                       { label: "Morning", activity: picks.morning },
                       { label: "Afternoon", activity: picks.afternoon },
-                      { label: "Evening", activity: picks.evening },
+                      { label: "Dinner", activity: picks.evening },
                     ].map((slot) => (
                       <div key={`${day}-saved-${slot.label}`} className="mt-3 rounded-lg border border-[var(--line)] px-3 py-2">
                         <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{slot.label}</p>

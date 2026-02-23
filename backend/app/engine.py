@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import urllib.parse
@@ -43,11 +44,26 @@ STYLE_SETTINGS = {
     "balanced": {"max_activities": 3, "distance_weight": 1.1, "downtime": 0.1},
     "chill": {"max_activities": 2, "distance_weight": 1.3, "downtime": 0.25},
 }
-SLOT_CATEGORY_PRIORITIES: dict[DraftSlotName, set[str]] = {
-    DraftSlotName.morning: {"museum", "park", "landmark", "culture", "hike", "food", "restaurant"},
-    DraftSlotName.afternoon: {"food", "restaurant", "museum", "park", "landmark", "culture", "spa"},
-    DraftSlotName.evening: {"bar", "nightclub", "relaxation", "spa", "food", "restaurant", "landmark"},
+SLOT_ALLOWED_CATEGORIES: dict[DraftSlotName, set[str]] = {
+    DraftSlotName.morning: {"museum", "park", "landmark", "culture", "hike", "spa", "relaxation"},
+    DraftSlotName.afternoon: {"museum", "park", "landmark", "culture", "hike", "spa", "relaxation"},
+    DraftSlotName.evening: {"food", "restaurant"},
 }
+TROPICAL_DESTINATION_KEYWORDS = {
+    "hawaii",
+    "maui",
+    "oahu",
+    "kauai",
+    "honolulu",
+    "island",
+    "beach",
+    "bali",
+    "maldives",
+    "phuket",
+    "cancun",
+}
+NATURE_DESTINATION_KEYWORDS = {"national park", "mountain", "alps", "yosemite", "banff", "patagonia", "iceland"}
+CITY_DESTINATION_KEYWORDS = {"new york", "paris", "tokyo", "london", "rome", "barcelona", "berlin", "chicago"}
 
 STATIC_ACTIVITY_LIBRARY = {
     "new york": [
@@ -57,11 +73,17 @@ STATIC_ACTIVITY_LIBRARY = {
         ("Brooklyn Bridge Walk", "landmark", 4.7, 0, 40.7061, -73.9969, 90, "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=800&q=80"),
         ("Williamsburg Rooftop", "bar", 4.6, 3, 40.7188, -73.9570, 120, "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&q=80"),
         ("SoHo Food Crawl", "restaurant", 4.6, 2, 40.7233, -74.0030, 120, "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80"),
+        ("West Village Trattoria", "restaurant", 4.6, 2, 40.7344, -74.0027, 100, "https://images.unsplash.com/photo-1515669097368-22e68427d265?w=800&q=80"),
+        ("Union Square Brasserie", "food", 4.5, 3, 40.7369, -73.9903, 95, "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?w=800&q=80"),
+        ("Lower East Side Bistro", "restaurant", 4.5, 2, 40.7175, -73.9859, 100, "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80"),
         ("Prospect Park Picnic", "relaxation", 4.6, 1, 40.6602, -73.9690, 120, "https://images.unsplash.com/photo-1506501139174-099022df5260?w=800&q=80"),
     ],
     "paris": [
         ("Louvre Museum", "museum", 4.8, 3, 48.8606, 2.3376, 180, "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=800&q=80"),
         ("Le Marais Food Walk", "food", 4.7, 2, 48.8578, 2.3622, 120, "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80"),
+        ("Saint-Germain Bistro", "restaurant", 4.6, 3, 48.8531, 2.3333, 95, "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80"),
+        ("Canal Brasserie", "restaurant", 4.5, 2, 48.8721, 2.3631, 90, "https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=800&q=80"),
+        ("Rue Cler Dinner Spot", "food", 4.5, 2, 48.8558, 2.3056, 90, "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=800&q=80"),
         ("Seine Sunset Cruise", "relaxation", 4.6, 3, 48.8584, 2.2945, 90, "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&q=80"),
         ("Montmartre Streets", "culture", 4.6, 1, 48.8867, 2.3431, 120, "https://images.unsplash.com/photo-1522083111812-dbfbc72b226e?w=800&q=80"),
         ("Luxembourg Gardens", "park", 4.7, 0, 48.8462, 2.3371, 90, "https://images.unsplash.com/photo-1581404179352-87db3bb75de5?w=800&q=80"),
@@ -69,6 +91,9 @@ STATIC_ACTIVITY_LIBRARY = {
     ],
     "tokyo": [
         ("Tsukiji Outer Market", "food", 4.7, 2, 35.6655, 139.7708, 120, "https://images.unsplash.com/photo-1528151528657-8ba2baf8ce16?w=800&q=80"),
+        ("Ginza Izakaya Dinner", "restaurant", 4.6, 3, 35.6717, 139.7650, 100, "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80"),
+        ("Shinjuku Yakitori Alley", "food", 4.6, 2, 35.6938, 139.7034, 90, "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"),
+        ("Asakusa Local Dining", "restaurant", 4.5, 2, 35.7134, 139.7966, 95, "https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=800&q=80"),
         ("Meiji Shrine", "culture", 4.7, 1, 35.6764, 139.6993, 90, "https://images.unsplash.com/photo-1531518326284-95438ee2b8af?w=800&q=80"),
         ("Shinjuku Gyoen", "park", 4.7, 1, 35.6852, 139.7100, 120, "https://images.unsplash.com/photo-1558862141-8631bfa2a912?w=800&q=80"),
         ("Shibuya Night Crawl", "nightclub", 4.6, 3, 35.6595, 139.7005, 150, "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"),
@@ -81,6 +106,11 @@ STATIC_ACTIVITY_LIBRARY = {
 class ItineraryEngine:
     def __init__(self) -> None:
         self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+        self.destination_boost_model = os.getenv(
+            "OPENAI_DESTINATION_RERANK_MODEL",
+            os.getenv("OPENAI_EXPLANATION_MODEL", "gpt-4o-mini"),
+        )
+        self._destination_boost_cache: Dict[str, Dict[str, float]] = {}
         google_places_key = os.getenv("GOOGLE_PLACES_API_KEY")
         self.google_places_client = (
             GooglePlacesClient(
@@ -104,6 +134,7 @@ class ItineraryEngine:
         wake_profile = Counter([p.wake_preference for p in trip.participants])
 
         activities = self._fetch_activities(trip.destination, trip.accommodation_lat, trip.accommodation_lng)
+        destination_category_boosts = self._get_destination_category_boosts(trip.destination, activities)
         day_count = (trip.end_date - trip.start_date).days + 1
         options: List[ItineraryOption] = []
         for name, style in [
@@ -111,7 +142,14 @@ class ItineraryEngine:
             ("Balanced Exploration", "balanced"),
             ("Relaxed Trip", "chill"),
         ]:
-            scored = self._score_activities(activities, group_interest_vector, trip, wake_profile, style)
+            scored = self._score_activities(
+                activities,
+                group_interest_vector,
+                trip,
+                wake_profile,
+                style,
+                destination_category_boosts=destination_category_boosts,
+            )
             clustered = self._cluster_by_geo(scored, day_count)
             options.append(
                 self._build_option(
@@ -122,6 +160,7 @@ class ItineraryEngine:
                     energy_profile,
                     wake_profile,
                     trip,
+                    destination_category_boosts,
                 )
             )
 
@@ -144,7 +183,15 @@ class ItineraryEngine:
         dominant_style = schedule_profile.most_common(1)[0][0]
 
         activities = self._fetch_activities(trip.destination, trip.accommodation_lat, trip.accommodation_lng)
-        scored = self._score_activities(activities, group_interest_vector, trip, wake_profile, dominant_style)
+        destination_category_boosts = self._get_destination_category_boosts(trip.destination, activities)
+        scored = self._score_activities(
+            activities,
+            group_interest_vector,
+            trip,
+            wake_profile,
+            dominant_style,
+            destination_category_boosts=destination_category_boosts,
+        )
         day_count = (trip.end_date - trip.start_date).days + 1
 
         if not scored:
@@ -185,6 +232,135 @@ class ItineraryEngine:
         size = max(1, len(participants))
         return {k: v / size for k, v in counts.items()}
 
+    def _get_destination_category_boosts(self, destination: str, activities: List[Activity]) -> Dict[str, float]:
+        categories = sorted({activity.category for activity in activities if activity.category})
+        if not categories:
+            return {}
+
+        destination_key = destination.strip().lower()
+        cache_key = f"{destination_key}|{','.join(categories)}"
+        cached = self._destination_boost_cache.get(cache_key)
+        if cached:
+            return dict(cached)
+
+        boosts = self._heuristic_destination_category_boosts(destination, categories)
+        ai_boosts = self._infer_destination_category_boosts_with_ai(destination, categories, boosts)
+        if ai_boosts:
+            boosts.update(ai_boosts)
+
+        normalized = {category: self._clamp(float(boosts.get(category, 1.0)), 0.75, 1.4) for category in categories}
+        self._destination_boost_cache[cache_key] = dict(normalized)
+        return normalized
+
+    def _heuristic_destination_category_boosts(self, destination: str, categories: List[str]) -> Dict[str, float]:
+        boosts = {category: 1.0 for category in categories}
+        destination_key = destination.strip().lower()
+
+        def boost_at_least(category: str, value: float) -> None:
+            if category in boosts:
+                boosts[category] = max(boosts[category], value)
+
+        def cap_at_most(category: str, value: float) -> None:
+            if category in boosts:
+                boosts[category] = min(boosts[category], value)
+
+        if any(keyword in destination_key for keyword in TROPICAL_DESTINATION_KEYWORDS):
+            for category, value in {
+                "beach": 1.35,
+                "park": 1.22,
+                "hike": 1.2,
+                "spa": 1.18,
+                "relaxation": 1.2,
+                "landmark": 1.08,
+            }.items():
+                boost_at_least(category, value)
+            cap_at_most("museum", 0.9)
+
+        if any(keyword in destination_key for keyword in NATURE_DESTINATION_KEYWORDS):
+            for category, value in {
+                "park": 1.28,
+                "hike": 1.28,
+                "landmark": 1.1,
+                "relaxation": 1.12,
+            }.items():
+                boost_at_least(category, value)
+            cap_at_most("nightclub", 0.9)
+
+        if any(keyword in destination_key for keyword in CITY_DESTINATION_KEYWORDS):
+            for category, value in {
+                "museum": 1.16,
+                "landmark": 1.14,
+                "culture": 1.12,
+                "restaurant": 1.08,
+                "food": 1.06,
+            }.items():
+                boost_at_least(category, value)
+
+        return boosts
+
+    def _infer_destination_category_boosts_with_ai(
+        self,
+        destination: str,
+        categories: List[str],
+        fallback_boosts: Dict[str, float],
+    ) -> Dict[str, float]:
+        if not self.openai_client:
+            return {}
+
+        prompt = (
+            "You are tuning travel activity category relevance for a destination.\n"
+            f"Destination: {destination}\n"
+            f"Categories: {json.dumps(categories)}\n"
+            f"Current multipliers: {json.dumps(fallback_boosts)}\n"
+            "Return a JSON object with the same category keys and numeric multipliers.\n"
+            "Rules:\n"
+            "- Keep each multiplier between 0.75 and 1.4.\n"
+            "- Favor destination-defining activities (e.g., islands -> beach/outdoors/relaxation).\n"
+            "- Do not overboost generic food unless destination cuisine is core.\n"
+            "- Output JSON only."
+        )
+
+        try:
+            completion = self.openai_client.chat.completions.create(
+                model=self.destination_boost_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=280,
+            )
+            content = completion.choices[0].message.content or ""
+            parsed = self._extract_json_object(content)
+            if not parsed:
+                return {}
+
+            ai_boosts: Dict[str, float] = {}
+            for category in categories:
+                raw_value = parsed.get(category)
+                if raw_value is None:
+                    continue
+                try:
+                    numeric = float(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                ai_boosts[category] = self._clamp(numeric, 0.75, 1.4)
+            return ai_boosts
+        except Exception as exc:
+            print(f"Destination rerank error: {exc}")
+            return {}
+
+    @staticmethod
+    def _extract_json_object(text: str) -> dict:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return {}
+        try:
+            payload = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        return payload
+
     def _fetch_activities(self, destination: str, base_lat: float, base_lng: float) -> List[Activity]:
         raw = None
         if self.google_places_client:
@@ -219,6 +395,9 @@ class ItineraryEngine:
     def _fallback_activity_set(self, base_lat: float, base_lng: float):
         return [
             ("Neighborhood Food Hall", "food", 4.4, 2, base_lat + 0.010, base_lng + 0.010, 90, "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80"),
+            ("Old Quarter Bistro", "restaurant", 4.4, 2, base_lat + 0.007, base_lng + 0.013, 95, "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80"),
+            ("Riverside Dinner House", "restaurant", 4.5, 3, base_lat - 0.004, base_lng + 0.016, 100, "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"),
+            ("Local Market Kitchen", "food", 4.5, 2, base_lat + 0.011, base_lng - 0.004, 90, "https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=800&q=80"),
             ("City History Museum", "museum", 4.5, 2, base_lat - 0.012, base_lng + 0.008, 120, "https://images.unsplash.com/photo-1545624783-a912bb31c9a0?w=800&q=80"),
             ("Riverside Park", "park", 4.6, 0, base_lat + 0.008, base_lng - 0.012, 90, "https://images.unsplash.com/photo-1498144846853-6cc3a433230a?w=800&q=80"),
             ("Old Town Walking Route", "landmark", 4.5, 1, base_lat - 0.015, base_lng - 0.010, 120, "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=800&q=80"),
@@ -234,11 +413,13 @@ class ItineraryEngine:
         trip: Trip,
         wake_profile: Counter,
         style: str,
+        destination_category_boosts: Dict[str, float] | None = None,
     ) -> List[tuple[Activity, float]]:
         settings = STYLE_SETTINGS[style]
         results: List[tuple[Activity, float]] = []
         wake_mode = wake_profile.most_common(1)[0][0]
         wake_multiplier = {WakePreference.early: 1.0, WakePreference.normal: 0.9, WakePreference.late: 0.8}[wake_mode]
+        destination_category_boosts = destination_category_boosts or {}
 
         for activity in activities:
             interest_key = CATEGORY_TO_INTEREST.get(activity.category, "culture")
@@ -255,8 +436,17 @@ class ItineraryEngine:
             duration_load = min(1.0, activity.typical_visit_duration / 240)
             downtime_penalty = max(0.6, 1 - settings["downtime"] * duration_load)
             style_bias = self._style_activity_bias(style, activity.category)
+            destination_bias = destination_category_boosts.get(activity.category, 1.0)
 
-            score = preference_match * rating_weight * distance_penalty * time_of_day_fit * downtime_penalty * style_bias
+            score = (
+                preference_match
+                * rating_weight
+                * distance_penalty
+                * time_of_day_fit
+                * downtime_penalty
+                * style_bias
+                * destination_bias
+            )
             results.append((activity, score))
 
         return sorted(results, key=lambda x: x[1], reverse=True)
@@ -300,24 +490,18 @@ class ItineraryEngine:
         slot_name: DraftSlotName,
         primary_used_names: set[str],
     ) -> List[tuple[Activity, float]]:
-        preferred_categories = SLOT_CATEGORY_PRIORITIES[slot_name]
+        allowed_categories = SLOT_ALLOWED_CATEGORIES[slot_name]
         ranked: List[tuple[Activity, float]] = []
-
-        def slot_multiplier(activity: Activity) -> float:
-            multiplier = 1.2 if activity.category in preferred_categories else 0.92
-            if slot_name == DraftSlotName.morning and activity.category in {"bar", "nightclub"}:
-                multiplier *= 0.75
-            if slot_name == DraftSlotName.evening and activity.category in {"museum", "landmark", "culture"}:
-                multiplier *= 0.88
-            return multiplier
 
         seen_names: set[str] = set()
 
         for activity, score in scored_activities:
+            if activity.category not in allowed_categories:
+                continue
             if activity.name in primary_used_names:
                 continue
             seen_names.add(activity.name)
-            ranked.append((activity, score * slot_multiplier(activity)))
+            ranked.append((activity, score))
 
         ranked.sort(key=lambda item: item[1], reverse=True)
 
@@ -325,10 +509,12 @@ class ItineraryEngine:
             return ranked
 
         for activity, score in scored_activities:
+            if activity.category not in allowed_categories:
+                continue
             if activity.name in seen_names:
                 continue
             seen_names.add(activity.name)
-            ranked.append((activity, score * slot_multiplier(activity)))
+            ranked.append((activity, score))
 
         ranked.sort(key=lambda item: item[1], reverse=True)
         return ranked
@@ -342,6 +528,7 @@ class ItineraryEngine:
         energy_profile: Counter,
         wake_profile: Counter,
         trip: Trip,
+        destination_category_boosts: Dict[str, float],
     ) -> ItineraryOption:
         settings = STYLE_SETTINGS[style]
         days: List[DayPlan] = []
@@ -375,7 +562,14 @@ class ItineraryEngine:
                 )
             )
 
-        activity_scores = self._score_activities(all_chosen, group_interest_vector, trip, wake_profile, style)
+        activity_scores = self._score_activities(
+            all_chosen,
+            group_interest_vector,
+            trip,
+            wake_profile,
+            style,
+            destination_category_boosts=destination_category_boosts,
+        )
         if activity_scores:
             avg_score = sum(score for _, score in activity_scores) / len(activity_scores)
             match_score = min(100.0, avg_score * 125.0)
@@ -514,6 +708,10 @@ class ItineraryEngine:
             if category in {"nightclub", "bar"}:
                 return 0.85
         return 1.0
+
+    @staticmethod
+    def _clamp(value: float, lower: float, upper: float) -> float:
+        return max(lower, min(upper, value))
 
     @staticmethod
     def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
