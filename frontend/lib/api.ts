@@ -76,6 +76,7 @@ export const api = {
     destination: string;
     start_date: string;
     end_date: string;
+    accommodation_address: string;
     accommodation_lat: number;
     accommodation_lng: number;
   }) {

@@ -225,6 +225,26 @@ export default function TripPage() {
         <div className="panel fade-up p-6 md:p-7">
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold">Itinerary Options</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">Three pacing styles generated from real nearby places.</p>
+
+          {trip?.accommodation_address && (
+            <div className="mt-5 rounded-xl border border-[var(--brand)] bg-[var(--brand)]/10 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-[var(--font-heading)] text-sm font-bold uppercase tracking-wider text-[var(--brand)]">Your Basecamp</h3>
+                  <p className="mt-1 text-base font-medium text-[var(--ink)]">{trip.accommodation_address}</p>
+                </div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trip.accommodation_address)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full bg-[var(--brand)] px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  View on Map
+                </a>
+              </div>
+            </div>
+          )}
+
           {!itinerary && <p className="mt-5 text-sm text-[var(--muted)]">No itinerary generated yet.</p>}
 
           <div className="mt-5 grid gap-4">
@@ -263,6 +283,15 @@ export default function TripPage() {
                               </div>
                             ) : (
                               <>
+                                {slot.activity.image_url && (
+                                  <div className="-mx-4 -mt-4 mb-4 h-48 overflow-hidden rounded-t-xl bg-[var(--surface-soft)]">
+                                    <img
+                                      src={slot.activity.image_url}
+                                      alt={slot.activity.name}
+                                      className="h-full w-full object-cover transition-transform duration-700 hover:scale-105"
+                                    />
+                                  </div>
+                                )}
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex items-center gap-3">
                                     <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand)]">{slot.label}</span>
@@ -274,10 +303,22 @@ export default function TripPage() {
                                 </div>
                                 <div className="mt-2 flex items-center gap-4 text-xs font-medium text-[var(--muted)]">
                                   <span>⭐ {slot.activity.rating.toFixed(1)}</span>
-                                  <span>{Array(Math.max(1, slot.activity.price_level)).fill('$').join('')}</span>
+                                  <span>{Array(Math.max(1, slot.activity.price_level)).fill('$').join('')} {slot.activity.estimated_price ? `(${slot.activity.estimated_price})` : ''}</span>
                                 </div>
                                 {slot.activity.explanation && (
                                   <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">{slot.activity.explanation}</p>
+                                )}
+                                {slot.activity.activity_url && (
+                                  <div className="mt-4 border-t border-[var(--line)] pt-4">
+                                    <a
+                                      href={slot.activity.activity_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex w-full justify-center rounded-lg border border-[var(--brand)] px-4 py-2 text-sm font-semibold text-[var(--brand)] transition-colors hover:bg-[var(--brand)] hover:text-white"
+                                    >
+                                      View on Map / Book
+                                    </a>
+                                  </div>
                                 )}
                               </>
                             )}

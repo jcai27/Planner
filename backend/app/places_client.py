@@ -5,11 +5,11 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen
 
 
-RawActivity = Tuple[str, str, float, int, float, float, int]
+RawActivity = Tuple[str, str, float, int, float, float, int, str, str, str]
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,25 @@ class GooglePlacesClient:
 
                 rating = float(place.get("rating") or 4.2)
                 price_level = int(place.get("price_level") or 2)
+                
+                price_mapping = {
+                    0: "Free",
+                    1: "Under $20",
+                    2: "$20 - $50",
+                    3: "$50 - $100",
+                    4: "$100+",
+                }
+                estimated_price = price_mapping.get(price_level, "$20 - $50")
+                
+                activity_url = f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}&query_place_id={place_id}"
+
+                photo_url = ""
+                photos = place.get("photos", [])
+                if photos and len(photos) > 0:
+                    photo_ref = photos[0].get("photo_reference")
+                    if photo_ref:
+                        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference={photo_ref}&key={self.api_key}"
+
                 raw_item: RawActivity = (
                     str(name),
                     type_config.mapped_category,
@@ -76,6 +95,9 @@ class GooglePlacesClient:
                     float(place_lat),
                     float(place_lng),
                     type_config.typical_duration_minutes,
+                    photo_url,
+                    activity_url,
+                    estimated_price,
                 )
                 existing = places_by_id.get(place_id)
                 if not existing or raw_item[2] > existing[2]:

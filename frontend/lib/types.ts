@@ -22,6 +22,7 @@ export type Trip = {
   destination: string;
   start_date: string;
   end_date: string;
+  accommodation_address: string;
   accommodation_lat: number;
   accommodation_lng: number;
   participants: Participant[];
@@ -41,6 +42,9 @@ export type Activity = {
   longitude: number;
   typical_visit_duration: number;
   explanation?: string;
+  image_url?: string;
+  activity_url?: string;
+  estimated_price?: string;
 };
 
 export type DayPlan = {

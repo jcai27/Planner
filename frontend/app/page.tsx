@@ -36,6 +36,7 @@ export default function HomePage() {
         destination,
         start_date: startDate,
         end_date: endDate,
+        accommodation_address: address,
         accommodation_lat,
         accommodation_lng
       });

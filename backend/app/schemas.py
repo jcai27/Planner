@@ -38,6 +38,7 @@ class CreateTripRequest(BaseModel):
     destination: str = Field(min_length=2)
     start_date: date
     end_date: date
+    accommodation_address: str
     accommodation_lat: float
     accommodation_lng: float
 
@@ -82,6 +83,7 @@ class Trip(BaseModel):
     destination: str
     start_date: date
     end_date: date
+    accommodation_address: str
     accommodation_lat: float
     accommodation_lng: float
     participants: List[Participant] = Field(default_factory=list)
@@ -101,6 +103,9 @@ class Activity(BaseModel):
     longitude: float
     typical_visit_duration: int
     explanation: Optional[str] = None
+    image_url: Optional[str] = None
+    activity_url: Optional[str] = None
+    estimated_price: Optional[str] = None
 
 
 class DayPlan(BaseModel):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+import urllib.parse
 from collections import Counter
 from datetime import datetime
 from typing import Dict, Iterable, List
@@ -42,29 +43,29 @@ STYLE_SETTINGS = {
 
 STATIC_ACTIVITY_LIBRARY = {
     "new york": [
-        ("Chelsea Market", "food", 4.7, 2, 40.7424, -74.0060, 90),
-        ("Metropolitan Museum of Art", "museum", 4.8, 3, 40.7794, -73.9632, 150),
-        ("Central Park Loop", "park", 4.8, 0, 40.7812, -73.9665, 120),
-        ("Brooklyn Bridge Walk", "landmark", 4.7, 0, 40.7061, -73.9969, 90),
-        ("Williamsburg Rooftop", "bar", 4.6, 3, 40.7188, -73.9570, 120),
-        ("SoHo Food Crawl", "restaurant", 4.6, 2, 40.7233, -74.0030, 120),
-        ("Prospect Park Picnic", "relaxation", 4.6, 1, 40.6602, -73.9690, 120),
+        ("Chelsea Market", "food", 4.7, 2, 40.7424, -74.0060, 90, "https://images.unsplash.com/photo-1546411516-72879ef7bf8d?w=800&q=80"),
+        ("Metropolitan Museum of Art", "museum", 4.8, 3, 40.7794, -73.9632, 150, "https://images.unsplash.com/photo-1545624783-a912bb31c9a0?w=800&q=80"),
+        ("Central Park Loop", "park", 4.8, 0, 40.7812, -73.9665, 120, "https://images.unsplash.com/photo-1498144846853-6cc3a433230a?w=800&q=80"),
+        ("Brooklyn Bridge Walk", "landmark", 4.7, 0, 40.7061, -73.9969, 90, "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=800&q=80"),
+        ("Williamsburg Rooftop", "bar", 4.6, 3, 40.7188, -73.9570, 120, "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&q=80"),
+        ("SoHo Food Crawl", "restaurant", 4.6, 2, 40.7233, -74.0030, 120, "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80"),
+        ("Prospect Park Picnic", "relaxation", 4.6, 1, 40.6602, -73.9690, 120, "https://images.unsplash.com/photo-1506501139174-099022df5260?w=800&q=80"),
     ],
     "paris": [
-        ("Louvre Museum", "museum", 4.8, 3, 48.8606, 2.3376, 180),
-        ("Le Marais Food Walk", "food", 4.7, 2, 48.8578, 2.3622, 120),
-        ("Seine Sunset Cruise", "relaxation", 4.6, 3, 48.8584, 2.2945, 90),
-        ("Montmartre Streets", "culture", 4.6, 1, 48.8867, 2.3431, 120),
-        ("Luxembourg Gardens", "park", 4.7, 0, 48.8462, 2.3371, 90),
-        ("Latin Quarter Jazz Bar", "bar", 4.5, 2, 48.8493, 2.3470, 120),
+        ("Louvre Museum", "museum", 4.8, 3, 48.8606, 2.3376, 180, "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=800&q=80"),
+        ("Le Marais Food Walk", "food", 4.7, 2, 48.8578, 2.3622, 120, "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80"),
+        ("Seine Sunset Cruise", "relaxation", 4.6, 3, 48.8584, 2.2945, 90, "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&q=80"),
+        ("Montmartre Streets", "culture", 4.6, 1, 48.8867, 2.3431, 120, "https://images.unsplash.com/photo-1522083111812-dbfbc72b226e?w=800&q=80"),
+        ("Luxembourg Gardens", "park", 4.7, 0, 48.8462, 2.3371, 90, "https://images.unsplash.com/photo-1581404179352-87db3bb75de5?w=800&q=80"),
+        ("Latin Quarter Jazz Bar", "bar", 4.5, 2, 48.8493, 2.3470, 120, "https://images.unsplash.com/photo-1543362906-acfc16c67564?w=800&q=80"),
     ],
     "tokyo": [
-        ("Tsukiji Outer Market", "food", 4.7, 2, 35.6655, 139.7708, 120),
-        ("Meiji Shrine", "culture", 4.7, 1, 35.6764, 139.6993, 90),
-        ("Shinjuku Gyoen", "park", 4.7, 1, 35.6852, 139.7100, 120),
-        ("Shibuya Night Crawl", "nightclub", 4.6, 3, 35.6595, 139.7005, 150),
-        ("Asakusa Temple District", "landmark", 4.7, 1, 35.7148, 139.7967, 120),
-        ("Odaiba Onsen Style Spa", "spa", 4.5, 3, 35.6142, 139.7768, 120),
+        ("Tsukiji Outer Market", "food", 4.7, 2, 35.6655, 139.7708, 120, "https://images.unsplash.com/photo-1528151528657-8ba2baf8ce16?w=800&q=80"),
+        ("Meiji Shrine", "culture", 4.7, 1, 35.6764, 139.6993, 90, "https://images.unsplash.com/photo-1531518326284-95438ee2b8af?w=800&q=80"),
+        ("Shinjuku Gyoen", "park", 4.7, 1, 35.6852, 139.7100, 120, "https://images.unsplash.com/photo-1558862141-8631bfa2a912?w=800&q=80"),
+        ("Shibuya Night Crawl", "nightclub", 4.6, 3, 35.6595, 139.7005, 150, "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"),
+        ("Asakusa Temple District", "landmark", 4.7, 1, 35.7148, 139.7967, 120, "https://images.unsplash.com/photo-1554797589-7241f4bade8f?w=800&q=80"),
+        ("Odaiba Onsen Style Spa", "spa", 4.5, 3, 35.6142, 139.7768, 120, "https://images.unsplash.com/photo-1544465544-1b71aee9dfa3?w=800&q=80"),
     ],
 }
 
@@ -144,28 +145,33 @@ class ItineraryEngine:
             raw = STATIC_ACTIVITY_LIBRARY.get(city_key)
         if not raw:
             raw = self._fallback_activity_set(base_lat, base_lng)
-        return [
-            Activity(
-                name=name,
-                category=category,
-                rating=rating,
-                price_level=price,
-                latitude=lat,
-                longitude=lng,
-                typical_visit_duration=duration,
-            )
-            for name, category, rating, price, lat, lng, duration in raw
-        ]
+            
+        res = []
+        for item in raw:
+            name, category, rating, price, lat, lng, duration = item[:7]
+            image_url = item[7] if len(item) > 7 else None
+            activity_url = item[8] if len(item) > 8 else f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name)}"
+            
+            price_mapping = {0: "Free", 1: "Under $20", 2: "$20 - $50", 3: "$50 - $100", 4: "$100+"}
+            estimated_price = item[9] if len(item) > 9 else price_mapping.get(price, "$20 - $50")
+            
+            res.append(Activity(
+                name=name, category=category, rating=rating, price_level=price,
+                latitude=lat, longitude=lng, typical_visit_duration=duration,
+                image_url=image_url, activity_url=activity_url, estimated_price=estimated_price
+            ))
+            
+        return res
 
     def _fallback_activity_set(self, base_lat: float, base_lng: float):
         return [
-            ("Neighborhood Food Hall", "food", 4.4, 2, base_lat + 0.010, base_lng + 0.010, 90),
-            ("City History Museum", "museum", 4.5, 2, base_lat - 0.012, base_lng + 0.008, 120),
-            ("Riverside Park", "park", 4.6, 0, base_lat + 0.008, base_lng - 0.012, 90),
-            ("Old Town Walking Route", "landmark", 4.5, 1, base_lat - 0.015, base_lng - 0.010, 120),
-            ("Sunset Lounge", "bar", 4.3, 3, base_lat + 0.005, base_lng + 0.018, 120),
-            ("Urban Wellness Spa", "spa", 4.4, 3, base_lat - 0.009, base_lng + 0.014, 90),
-            ("Local Bistro", "restaurant", 4.5, 2, base_lat + 0.002, base_lng - 0.006, 90),
+            ("Neighborhood Food Hall", "food", 4.4, 2, base_lat + 0.010, base_lng + 0.010, 90, "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80"),
+            ("City History Museum", "museum", 4.5, 2, base_lat - 0.012, base_lng + 0.008, 120, "https://images.unsplash.com/photo-1545624783-a912bb31c9a0?w=800&q=80"),
+            ("Riverside Park", "park", 4.6, 0, base_lat + 0.008, base_lng - 0.012, 90, "https://images.unsplash.com/photo-1498144846853-6cc3a433230a?w=800&q=80"),
+            ("Old Town Walking Route", "landmark", 4.5, 1, base_lat - 0.015, base_lng - 0.010, 120, "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=800&q=80"),
+            ("Sunset Lounge", "bar", 4.3, 3, base_lat + 0.005, base_lng + 0.018, 120, "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&q=80"),
+            ("Urban Wellness Spa", "spa", 4.4, 3, base_lat - 0.009, base_lng + 0.014, 90, "https://images.unsplash.com/photo-1544465544-1b71aee9dfa3?w=800&q=80"),
+            ("Local Bistro", "restaurant", 4.5, 2, base_lat + 0.002, base_lng - 0.006, 90, "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80"),
         ]
 
     def _score_activities(
@@ -277,7 +283,13 @@ class ItineraryEngine:
                 )
             )
 
-        match_score = min(100.0, 20.0 * sum(group_interest_vector.values()) / len(group_interest_vector))
+        activity_scores = self._score_activities(all_chosen, group_interest_vector, trip, wake_profile, style)
+        if activity_scores:
+            avg_score = sum(score for _, score in activity_scores) / len(activity_scores)
+            match_score = min(100.0, avg_score * 125.0)
+        else:
+            match_score = 50.0
+
         explanation = self._explain_plan(name, style, group_interest_vector, energy_profile, wake_profile, trip)
 
         explanations_map = self._explain_activities(all_chosen, style, group_interest_vector, trip)
