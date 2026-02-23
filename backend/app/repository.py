@@ -58,6 +58,7 @@ class SqlRepository:
                 destination=model.destination,
                 start_date=model.start_date,
                 end_date=model.end_date,
+                accommodation_address=getattr(model, "accommodation_address", "") or "",
                 accommodation_lat=model.accommodation_lat,
                 accommodation_lng=model.accommodation_lng,
                 participants=participants,

@@ -83,7 +83,7 @@ class Trip(BaseModel):
     destination: str
     start_date: date
     end_date: date
-    accommodation_address: str
+    accommodation_address: str = ""
     accommodation_lat: float
     accommodation_lng: float
     participants: List[Participant] = Field(default_factory=list)
