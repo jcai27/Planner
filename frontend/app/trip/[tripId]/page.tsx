@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { ItineraryResult, InterestVector, Trip } from "@/lib/types";
@@ -14,8 +14,8 @@ const defaultInterests: InterestVector = {
   relaxation: 2
 };
 
-export default function TripPage({ params }: { params: { tripId: string } }) {
-  const { tripId } = params;
+export default function TripPage() {
+  const { tripId } = useParams<{ tripId: string }>();
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token");
 
