@@ -19,9 +19,7 @@ export default function HomePage() {
     setError("");
     setIsSaving(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`, {
-        headers: { "User-Agent": "PlannerApp/1.0" }
-      });
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`);
       if (!res.ok) throw new Error("Failed to contact geocoding service");
       const data = await res.json();
 
