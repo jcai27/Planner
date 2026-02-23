@@ -17,6 +17,12 @@ from .engine import ItineraryEngine
 from .schemas import CreateTripRequest, ItineraryResult, JoinTripRequest, Participant, Trip, TripCreateResponse
 from .repository import SqlRepository
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+DEFAULT_CORS_ORIGIN_REGEX = r"^https://[a-zA-Z0-9-]+\.vercel\.app$"
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -25,14 +31,20 @@ async def lifespan(_: FastAPI):
 
 
 def _load_cors_origins() -> list[str]:
-    raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000")
-    origins = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
-    return origins or ["http://localhost:3000"]
+    raw = os.getenv("CORS_ALLOW_ORIGINS")
+    if raw:
+        origins = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+        if origins:
+            return origins
+    return DEFAULT_CORS_ORIGINS.copy()
 
 
 def _load_cors_origin_regex() -> str | None:
     raw = (os.getenv("CORS_ALLOW_ORIGIN_REGEX") or "").strip()
-    return raw or None
+    if raw:
+        return raw
+    # Keep preview/staging Vercel deployments usable even when CORS_ALLOW_ORIGINS is narrowed.
+    return DEFAULT_CORS_ORIGIN_REGEX
 
 
 app = FastAPI(title="AI Group Itinerary Planner API", version="0.1.0", lifespan=lifespan)

@@ -1,6 +1,6 @@
 import { ItineraryResult, Trip, TripCreateResponse } from "@/lib/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 const TOKEN_STORAGE_PREFIX = "trip-token:";
 const JOIN_CODE_STORAGE_PREFIX = "trip-join-code:";
 

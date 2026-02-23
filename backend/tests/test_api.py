@@ -5,6 +5,8 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 
@@ -13,7 +15,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{DB_PATH}"
 
 from app.db import Base, engine
 from app.engine import ItineraryEngine
-from app.main import app
+from app.main import DEFAULT_CORS_ORIGIN_REGEX, app, _load_cors_origin_regex, _load_cors_origins
 from app.schemas import Activity, Trip
 
 
@@ -210,6 +212,49 @@ def test_trip_endpoints_require_valid_access_token():
 
         valid_token_resp = client.get(f"/trip/{trip_id}", headers=auth_headers(join_code))
         assert valid_token_resp.status_code == 200
+
+
+def test_cors_defaults_include_local_dev_and_vercel_preview_regex(monkeypatch):
+    monkeypatch.delenv("CORS_ALLOW_ORIGINS", raising=False)
+    monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)
+
+    origins = _load_cors_origins()
+    assert "http://localhost:3000" in origins
+    assert "http://127.0.0.1:3000" in origins
+    assert _load_cors_origin_regex() == DEFAULT_CORS_ORIGIN_REGEX
+
+
+def test_cors_preflight_allows_vercel_origin_with_token_header(monkeypatch):
+    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost:3000")
+    monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)
+
+    cors_app = FastAPI()
+    cors_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_load_cors_origins(),
+        allow_origin_regex=_load_cors_origin_regex(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @cors_app.get("/trip/{trip_id}")
+    def get_trip_stub(trip_id: str):
+        return {"trip_id": trip_id}
+
+    with TestClient(cors_app) as client:
+        preflight = client.options(
+            "/trip/6e185475-09ef-4454-aaf1-9bec49306ad8",
+            headers={
+                "Origin": "https://planner-sepia-alpha.vercel.app",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-trip-token,content-type",
+            },
+        )
+
+    assert preflight.status_code == 200
+    assert preflight.headers.get("access-control-allow-origin") == "https://planner-sepia-alpha.vercel.app"
+    assert preflight.headers.get("access-control-allow-credentials") == "true"
 
 
 def test_style_scoring_changes_activity_priority():
