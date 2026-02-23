@@ -100,6 +100,7 @@ class Activity(BaseModel):
     latitude: float
     longitude: float
     typical_visit_duration: int
+    explanation: Optional[str] = None
 
 
 class DayPlan(BaseModel):

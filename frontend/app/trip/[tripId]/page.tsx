@@ -244,27 +244,45 @@ export default function TripPage() {
                 </div>
                 <p className="mt-3 text-sm text-[var(--muted)]">{option.explanation}</p>
 
-                <div className="mt-4 grid gap-3">
+                <div className="mt-5 grid gap-5">
                   {option.days.map((day) => (
-                    <div key={day.day} className="rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
-                      <p className="font-[var(--font-heading)] text-lg font-semibold">Day {day.day}</p>
-                      <div className="day-grid">
-                        <div className="slot">
-                          <p className="slot-label">Morning</p>
-                          <p className="slot-value">{day.morning_activity?.name || "Open"}</p>
-                        </div>
-                        <div className="slot">
-                          <p className="slot-label">Afternoon</p>
-                          <p className="slot-value">{day.afternoon_activity?.name || "Open"}</p>
-                        </div>
-                        <div className="slot">
-                          <p className="slot-label">Dinner</p>
-                          <p className="slot-value">{day.dinner?.name || "Open"}</p>
-                        </div>
-                        <div className="slot">
-                          <p className="slot-label">Evening</p>
-                          <p className="slot-value">{day.evening_option?.name || "Open"}</p>
-                        </div>
+                    <div key={day.day} className="rounded-xl border border-[var(--line-strong)] bg-[var(--surface-soft)] p-5">
+                      <h4 className="font-[var(--font-heading)] text-xl font-bold">Day {day.day}</h4>
+                      <div className="mt-4 grid gap-4">
+                        {[
+                          { label: "Morning", activity: day.morning_activity },
+                          { label: "Afternoon", activity: day.afternoon_activity },
+                          { label: "Dinner", activity: day.dinner },
+                          { label: "Evening", activity: day.evening_option },
+                        ].map((slot) => (
+                          <div key={slot.label} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm hover:shadow-md transition-shadow">
+                            {!slot.activity ? (
+                              <div className="flex items-center gap-3 opacity-50">
+                                <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand)]">{slot.label}</span>
+                                <span className="text-sm font-medium text-[var(--muted)]">Open time</span>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand)]">{slot.label}</span>
+                                    <h4 className="font-semibold text-[var(--ink)] text-lg">{slot.activity.name}</h4>
+                                  </div>
+                                  <span className="rounded-full bg-[var(--surface-soft)] px-2.5 py-1 text-xs font-medium text-[var(--muted)] border border-[var(--line-strong)] capitalize">
+                                    {slot.activity.category}
+                                  </span>
+                                </div>
+                                <div className="mt-2 flex items-center gap-4 text-xs font-medium text-[var(--muted)]">
+                                  <span>⭐ {slot.activity.rating.toFixed(1)}</span>
+                                  <span>{Array(Math.max(1, slot.activity.price_level)).fill('$').join('')}</span>
+                                </div>
+                                {slot.activity.explanation && (
+                                  <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">{slot.activity.explanation}</p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}

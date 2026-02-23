@@ -40,6 +40,7 @@ export type Activity = {
   latitude: number;
   longitude: number;
   typical_visit_duration: number;
+  explanation?: string;
 };
 
 export type DayPlan = {

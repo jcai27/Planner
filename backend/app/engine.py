@@ -249,6 +249,8 @@ class ItineraryEngine:
         days: List[DayPlan] = []
         max_acts = settings["max_activities"]
 
+        all_chosen = []
+
         for day_index, day_activities in enumerate(clusters, start=1):
             selected = day_activities[:max_acts]
             morning = self._pick_first(selected, {"museum", "park", "landmark", "culture"})
@@ -260,6 +262,10 @@ class ItineraryEngine:
                 {"bar", "nightclub", "relaxation", "spa"},
                 exclude={x.name for x in [morning, afternoon, dinner] if x},
             )
+
+            for a in (morning, afternoon, dinner, evening):
+                if a and a not in all_chosen:
+                    all_chosen.append(a)
 
             days.append(
                 DayPlan(
@@ -273,6 +279,18 @@ class ItineraryEngine:
 
         match_score = min(100.0, 20.0 * sum(group_interest_vector.values()) / len(group_interest_vector))
         explanation = self._explain_plan(name, style, group_interest_vector, energy_profile, wake_profile, trip)
+
+        explanations_map = self._explain_activities(all_chosen, style, group_interest_vector, trip)
+
+        for day in days:
+            if day.morning_activity:
+                day.morning_activity = day.morning_activity.model_copy(update={"explanation": explanations_map.get(day.morning_activity.name, "")})
+            if day.afternoon_activity:
+                day.afternoon_activity = day.afternoon_activity.model_copy(update={"explanation": explanations_map.get(day.afternoon_activity.name, "")})
+            if day.dinner:
+                day.dinner = day.dinner.model_copy(update={"explanation": explanations_map.get(day.dinner.name, "")})
+            if day.evening_option:
+                day.evening_option = day.evening_option.model_copy(update={"explanation": explanations_map.get(day.evening_option.name, "")})
 
         return ItineraryOption(
             name=name,
@@ -320,6 +338,51 @@ class ItineraryEngine:
             return text or fallback
         except Exception:
             return fallback
+
+    def _explain_activities(self, activities: List[Activity], style: str, group_interest_vector: Dict[str, float], trip: Trip) -> Dict[str, str]:
+        if not self.openai_client or not activities:
+            return {}
+
+        top_interest = max(group_interest_vector.items(), key=lambda x: x[1])[0]
+        activity_names = [a.name for a in activities]
+        prompt = (
+            f"For a group trip to {trip.destination} with a focus on {top_interest} and pacing style '{style}', "
+            "provide a 1-2 sentence explanation for why each of the following places was chosen and what it is. "
+            f"Places: {', '.join(activity_names)}. "
+            "Return the result vertically, with each explanation on a new line starting with 'PLACE_NAME: '."
+        )
+
+        try:
+            completion = self.openai_client.responses.create(
+                model=os.getenv("OPENAI_EXPLANATION_MODEL", "gpt-4.1-mini"),
+                input=prompt,
+                max_output_tokens=1000,
+            )
+            text = completion.output_text.strip()
+            
+            explanations = {}
+            for line in text.split('\n'):
+                if ': ' in line:
+                    name, expl = line.split(': ', 1)
+                    name = name.strip()
+                    if name.startswith('- '):
+                        name = name[2:]
+                    if name.startswith('*'):
+                        name = name.replace('*', '')
+                    explanations[name] = expl.strip()
+            
+            result = {}
+            for a in activities:
+                match = explanations.get(a.name)
+                if not match:
+                    for k, v in explanations.items():
+                        if k in a.name or a.name in k:
+                            match = v
+                            break
+                result[a.name] = match or f"A great {a.category} option for the group in {trip.destination}."
+            return result
+        except Exception:
+            return {a.name: f"A great {a.category} option for the group in {trip.destination}." for a in activities}
 
     @staticmethod
     def _pick_first(activities: List[Activity], categories: set[str], exclude: set[str] | None = None):
