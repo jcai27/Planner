@@ -617,6 +617,9 @@ export default function TripPage() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               {currentDraftSlot.candidates.map((candidate) => {
                 const selected = draftPicks[currentDraftSlot.slot_id]?.name === candidate.name;
+                const mapUrl =
+                  candidate.activity_url ||
+                  `https://www.google.com/maps/search/?api=1&query=${candidate.latitude},${candidate.longitude}`;
                 return (
                   <article
                     key={`${currentDraftSlot.slot_id}-modal-${candidate.name}`}
@@ -651,6 +654,14 @@ export default function TripPage() {
                     <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
                       {getDraftCandidateDescription(candidate, currentDraftSlot.slot)}
                     </p>
+                    <a
+                      href={mapUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="secondary-btn mt-3 inline-flex w-full justify-center"
+                    >
+                      Locate on Map
+                    </a>
                     <button onClick={() => onPickCandidate(candidate)} className="primary-btn mt-4 w-full">
                       Pick This
                     </button>

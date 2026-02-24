@@ -289,14 +289,18 @@ def test_draft_slots_returns_three_slots_per_day():
         assert draft_resp.status_code == 200
         payload = draft_resp.json()
         assert payload["trip_id"] == trip_id
-        assert len(payload["slots"]) == 6  # 2 days x 3 slots/day
+        assert payload["slots"]
+        seen_names: set[str] = set()
         for slot in payload["slots"]:
             assert slot["slot"] in {"morning", "afternoon", "evening"}
-            assert len(slot["candidates"]) == 4
+            assert 1 <= len(slot["candidates"]) <= 4
             if slot["slot"] == "evening":
                 assert all(candidate["category"] in {"food", "restaurant"} for candidate in slot["candidates"])
             else:
                 assert all(candidate["category"] not in {"food", "restaurant"} for candidate in slot["candidates"])
+            for candidate in slot["candidates"]:
+                assert candidate["name"] not in seen_names
+                seen_names.add(candidate["name"])
 
 
 def test_draft_plan_can_be_saved_and_retrieved():

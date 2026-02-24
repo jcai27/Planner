@@ -198,16 +198,16 @@ class ItineraryEngine:
             return DraftSchedule(trip_id=trip.id, generated_at=datetime.utcnow().isoformat(), slots=[])
 
         slots: List[DraftSlot] = []
-        primary_used_names: set[str] = set()
+        presented_names: set[str] = set()
 
         for day in range(1, day_count + 1):
             for slot_name in slots_per_day:
-                ranked = self._rank_slot_candidates(scored, slot_name, primary_used_names)
+                ranked = self._rank_slot_candidates(scored, slot_name, presented_names)
                 candidates = [activity.model_copy() for activity, _ in ranked[:candidate_count]]
                 if not candidates:
                     continue
 
-                primary_used_names.add(candidates[0].name)
+                presented_names.update(candidate.name for candidate in candidates)
                 slots.append(
                     DraftSlot(
                         slot_id=f"day-{day}-{slot_name.value}",
@@ -506,7 +506,7 @@ class ItineraryEngine:
         self,
         scored_activities: List[tuple[Activity, float]],
         slot_name: DraftSlotName,
-        primary_used_names: set[str],
+        excluded_names: set[str],
     ) -> List[tuple[Activity, float]]:
         allowed_categories = SLOT_ALLOWED_CATEGORIES[slot_name]
         ranked: List[tuple[Activity, float]] = []
@@ -516,25 +516,13 @@ class ItineraryEngine:
         for activity, score in scored_activities:
             if activity.category not in allowed_categories:
                 continue
-            if activity.name in primary_used_names:
+            if activity.name in excluded_names:
                 continue
             seen_names.add(activity.name)
             ranked.append((activity, score))
 
         ranked.sort(key=lambda item: item[1], reverse=True)
 
-        if len(ranked) >= 4:
-            return ranked
-
-        for activity, score in scored_activities:
-            if activity.category not in allowed_categories:
-                continue
-            if activity.name in seen_names:
-                continue
-            seen_names.add(activity.name)
-            ranked.append((activity, score))
-
-        ranked.sort(key=lambda item: item[1], reverse=True)
         return ranked
 
     def _build_option(
