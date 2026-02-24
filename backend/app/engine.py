@@ -22,6 +22,7 @@ from .schemas import (
     ItineraryOption,
     ItineraryResult,
     Participant,
+    PlanningSettings,
     Trip,
     WakePreference,
 )
@@ -170,10 +171,16 @@ class ItineraryEngine:
             options=options,
         )
 
-    def generate_slot_draft(self, trip: Trip, choices_per_slot: int = 4) -> DraftSchedule:
+    def generate_slot_draft(
+        self,
+        trip: Trip,
+        choices_per_slot: int = 4,
+        planning_settings: PlanningSettings | None = None,
+    ) -> DraftSchedule:
         if not trip.participants:
             raise ValueError("At least one participant is required before drafting schedule slots")
 
+        settings = planning_settings or PlanningSettings()
         slots_per_day = [DraftSlotName.morning, DraftSlotName.afternoon, DraftSlotName.evening]
         candidate_count = max(3, min(choices_per_slot, 4))
 
@@ -199,15 +206,35 @@ class ItineraryEngine:
 
         slots: List[DraftSlot] = []
         presented_names: set[str] = set()
+        category_usage: Counter = Counter()
 
         for day in range(1, day_count + 1):
             for slot_name in slots_per_day:
-                ranked = self._rank_slot_candidates(scored, slot_name, presented_names)
-                candidates = [activity.model_copy() for activity, _ in ranked[:candidate_count]]
+                ranked = self._rank_slot_candidates(
+                    scored,
+                    slot_name,
+                    presented_names,
+                    settings,
+                    category_usage,
+                    trip,
+                )
+                candidates: List[Activity] = []
+                for activity, score in ranked[:candidate_count]:
+                    fit_score = round(min(99.0, max(25.0, score * 125.0)), 1)
+                    conflict_summary = self._build_conflict_summary(activity, trip.participants)
+                    candidates.append(
+                        activity.model_copy(
+                            update={
+                                "group_fit_score": fit_score,
+                                "conflict_summary": conflict_summary,
+                            }
+                        )
+                    )
                 if not candidates:
                     continue
 
                 presented_names.update(candidate.name for candidate in candidates)
+                category_usage[candidates[0].category] += 1
                 slots.append(
                     DraftSlot(
                         slot_id=f"day-{day}-{slot_name.value}",
@@ -231,7 +258,11 @@ class ItineraryEngine:
         )
         for slot in slots:
             slot.candidates = [
-                candidate.model_copy(update={"explanation": explanations.get(candidate.name, "")})
+                candidate.model_copy(
+                    update={
+                        "explanation": explanations.get(candidate.name, ""),
+                    }
+                )
                 for candidate in slot.candidates
             ]
 
@@ -400,12 +431,14 @@ class ItineraryEngine:
             activity_url = item[8] if len(item) > 8 else f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name)}"
             
             price_mapping = {0: "Free", 1: "Under $20", 2: "$20 - $50", 3: "$50 - $100", 4: "$100+"}
-            estimated_price = item[9] if len(item) > 9 else price_mapping.get(price, "$20 - $50")
+            estimated_price = item[9] if len(item) > 9 else price_mapping.get(price, "Varies")
+            price_confidence = item[10] if len(item) > 10 else ("inferred" if estimated_price else "unknown")
             
             res.append(Activity(
                 name=name, category=category, rating=rating, price_level=price,
                 latitude=lat, longitude=lng, typical_visit_duration=duration,
-                image_url=image_url, activity_url=activity_url, estimated_price=estimated_price
+                image_url=image_url, activity_url=activity_url, estimated_price=estimated_price,
+                price_confidence=price_confidence,
             ))
             
         return res
@@ -507,23 +540,108 @@ class ItineraryEngine:
         scored_activities: List[tuple[Activity, float]],
         slot_name: DraftSlotName,
         excluded_names: set[str],
+        planning_settings: PlanningSettings,
+        category_usage: Counter,
+        trip: Trip,
     ) -> List[tuple[Activity, float]]:
         allowed_categories = SLOT_ALLOWED_CATEGORIES[slot_name]
         ranked: List[tuple[Activity, float]] = []
-
-        seen_names: set[str] = set()
+        must_do_tokens = self._normalize_place_tokens(planning_settings.must_do_places)
+        avoid_tokens = self._normalize_place_tokens(planning_settings.avoid_places)
+        dietary_notes = (planning_settings.dietary_notes or "").lower()
+        mobility_notes = (planning_settings.mobility_notes or "").lower()
 
         for activity, score in scored_activities:
             if activity.category not in allowed_categories:
                 continue
             if activity.name in excluded_names:
                 continue
-            seen_names.add(activity.name)
-            ranked.append((activity, score))
+            if avoid_tokens and self._matches_place_tokens(activity.name, avoid_tokens):
+                continue
+
+            adjusted_score = score
+            if must_do_tokens and self._matches_place_tokens(activity.name, must_do_tokens):
+                adjusted_score *= 1.35
+
+            # Encourage category diversity across generated days to avoid repetitive schedules.
+            adjusted_score *= max(0.72, 1 - (0.09 * category_usage.get(activity.category, 0)))
+
+            # Enforce transfer-time practicality by downranking far-away candidates.
+            max_km = max(2.0, (planning_settings.max_transfer_minutes / 60.0) * 28.0)
+            distance_from_base = self._haversine_km(
+                trip.accommodation_lat,
+                trip.accommodation_lng,
+                activity.latitude,
+                activity.longitude,
+            )
+            if distance_from_base > (max_km * 2.0):
+                continue
+            if distance_from_base > max_km:
+                overflow_ratio = (distance_from_base - max_km) / max_km
+                adjusted_score *= max(0.55, 1.0 - overflow_ratio)
+
+            if slot_name == DraftSlotName.evening and dietary_notes:
+                lowered_name = activity.name.lower()
+                if "vegan" in dietary_notes:
+                    adjusted_score *= 1.12 if "vegan" in lowered_name or "plant" in lowered_name else 0.92
+                if "vegetarian" in dietary_notes:
+                    adjusted_score *= 1.1 if "vegetarian" in lowered_name or "veggie" in lowered_name else 0.93
+                if "halal" in dietary_notes:
+                    adjusted_score *= 1.1 if "halal" in lowered_name else 0.94
+                if "kosher" in dietary_notes:
+                    adjusted_score *= 1.1 if "kosher" in lowered_name else 0.94
+                if "gluten" in dietary_notes:
+                    adjusted_score *= 1.08 if "gluten" in lowered_name else 0.95
+
+            if mobility_notes:
+                if activity.category == "hike" and ("wheelchair" in mobility_notes or "avoid steep" in mobility_notes):
+                    continue
+                if activity.category in {"hike", "landmark"} and "limited walking" in mobility_notes:
+                    adjusted_score *= 0.84
+
+            ranked.append((activity, adjusted_score))
 
         ranked.sort(key=lambda item: item[1], reverse=True)
 
         return ranked
+
+    @staticmethod
+    def _normalize_place_tokens(raw_values: List[str]) -> set[str]:
+        tokens: set[str] = set()
+        for raw in raw_values:
+            value = (raw or "").strip().lower()
+            if not value:
+                continue
+            tokens.add(value)
+        return tokens
+
+    @staticmethod
+    def _matches_place_tokens(place_name: str, tokens: set[str]) -> bool:
+        name = (place_name or "").strip().lower()
+        if not name:
+            return False
+        return any(token in name for token in tokens)
+
+    def _build_conflict_summary(self, activity: Activity, participants: List[Participant]) -> str:
+        if not participants:
+            return "No participant preference data available."
+
+        interest_key = CATEGORY_TO_INTEREST.get(activity.category, "culture")
+        strong_match = 0
+        weak_match = 0
+        for participant in participants:
+            score = participant.interest_vector.as_dict().get(interest_key, 2.5)
+            if score >= 3.5:
+                strong_match += 1
+            elif score <= 2.0:
+                weak_match += 1
+
+        total = len(participants)
+        if strong_match == total:
+            return f"Strong fit for all {total} participants."
+        if weak_match == 0:
+            return f"Strong fit for {strong_match}/{total}; neutral for the rest."
+        return f"Strong fit for {strong_match}/{total}; lower fit for {weak_match}/{total}."
 
     def _build_option(
         self,

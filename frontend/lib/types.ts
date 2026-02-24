@@ -45,6 +45,9 @@ export type Activity = {
   image_url?: string;
   activity_url?: string;
   estimated_price?: string;
+  price_confidence?: "verified" | "inferred" | "unknown" | string;
+  group_fit_score?: number;
+  conflict_summary?: string;
 };
 
 export type DayPlan = {
@@ -91,8 +94,79 @@ export type DraftSelection = {
   activity: Activity;
 };
 
+export type PlanningSettings = {
+  daily_budget_per_person: number;
+  max_transfer_minutes: number;
+  dietary_notes: string;
+  mobility_notes: string;
+  must_do_places: string[];
+  avoid_places: string[];
+};
+
+export type DraftSlotFeedback = {
+  slot_id: string;
+  candidate_name: string;
+  votes: number;
+  vetoed: boolean;
+};
+
+export type DraftPlanMetadata = {
+  planning_settings: PlanningSettings;
+  slot_feedback: DraftSlotFeedback[];
+  selection_coverage_ratio: number;
+  shared_token?: string;
+  shared_count: number;
+  shared_at?: string;
+};
+
 export type DraftPlan = {
   trip_id: string;
   saved_at: string;
   selections: DraftSelection[];
+  metadata: DraftPlanMetadata;
+};
+
+export type DraftValidationDay = {
+  day: number;
+  estimated_cost_per_person: string;
+  estimated_cost_value: number;
+  transfer_minutes_total: number;
+  max_leg_minutes: number;
+  warnings: string[];
+  route_map_url?: string;
+};
+
+export type DraftValidationReport = {
+  trip_id: string;
+  generated_at: string;
+  day_count: number;
+  total_estimated_cost_per_person: number;
+  days: DraftValidationDay[];
+  warnings: string[];
+};
+
+export type ShareDraftPlanResponse = {
+  share_token: string;
+  share_url: string;
+};
+
+export type SharedDraftPlanResponse = {
+  trip_id: string;
+  destination: string;
+  start_date: string;
+  end_date: string;
+  accommodation_address: string;
+  draft_plan: DraftPlan;
+  validation: DraftValidationReport;
+};
+
+export type AnalyticsSummary = {
+  total_trips: number;
+  trips_with_saved_draft: number;
+  pct_trips_with_saved_draft: number;
+  saved_drafts: number;
+  saved_drafts_full_slots: number;
+  pct_saved_drafts_full_slots: number;
+  saved_drafts_shared: number;
+  pct_saved_drafts_shared: number;
 };

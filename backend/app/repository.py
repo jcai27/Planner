@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime
+import secrets
 from typing import Generator, Optional
 
 from sqlalchemy import select
 
 from .db import SessionLocal
-from .models import DraftPlanModel, ItineraryModel, ParticipantModel, TripModel
-from .schemas import DraftPlan, ItineraryResult, Participant, Trip, TripCreateResponse
+from .models import DraftPlanModel, ItineraryModel, ParticipantModel, TripModel, TripPlanningSettingsModel
+from .schemas import AnalyticsSummary, DraftPlan, ItineraryResult, Participant, PlanningSettings, Trip, TripCreateResponse
 
 
 class SqlRepository:
@@ -135,3 +137,128 @@ class SqlRepository:
             if not model:
                 return None
             return DraftPlan.model_validate(model.payload)
+
+    def save_planning_settings(self, trip_id: str, settings: PlanningSettings) -> PlanningSettings:
+        with self.session() as db:
+            model = db.get(TripPlanningSettingsModel, trip_id)
+            payload = settings.model_dump()
+            now = datetime.utcnow().isoformat()
+            if model:
+                model.updated_at = now
+                model.payload = payload
+            else:
+                db.add(
+                    TripPlanningSettingsModel(
+                        trip_id=trip_id,
+                        updated_at=now,
+                        payload=payload,
+                    )
+                )
+        return settings
+
+    def get_planning_settings(self, trip_id: str) -> Optional[PlanningSettings]:
+        with self.session() as db:
+            model = db.execute(
+                select(TripPlanningSettingsModel).where(TripPlanningSettingsModel.trip_id == trip_id)
+            ).scalar_one_or_none()
+            if not model:
+                return None
+            return PlanningSettings.model_validate(model.payload)
+
+    def touch_share_token(self, trip_id: str) -> Optional[str]:
+        with self.session() as db:
+            model = db.execute(select(DraftPlanModel).where(DraftPlanModel.trip_id == trip_id)).scalar_one_or_none()
+            if not model:
+                return None
+            payload = dict(model.payload or {})
+            metadata = dict(payload.get("metadata") or {})
+            token = str(metadata.get("shared_token") or "").strip()
+            if not token:
+                token = secrets.token_urlsafe(9).replace("-", "").replace("_", "")
+            metadata["shared_token"] = token
+            metadata["shared_count"] = int(metadata.get("shared_count") or 0) + 1
+            metadata["shared_at"] = datetime.utcnow().isoformat()
+            payload["metadata"] = metadata
+            model.payload = payload
+            model.saved_at = payload.get("saved_at") or model.saved_at
+            return token
+
+    def get_shared_draft_plan(self, share_token: str) -> Optional[tuple[Trip, DraftPlan]]:
+        token = share_token.strip()
+        if not token:
+            return None
+        with self.session() as db:
+            draft_models = db.execute(select(DraftPlanModel)).scalars().all()
+            for model in draft_models:
+                payload = model.payload or {}
+                metadata = payload.get("metadata") or {}
+                if str(metadata.get("shared_token") or "") != token:
+                    continue
+                trip_model = db.get(TripModel, model.trip_id)
+                if not trip_model:
+                    continue
+                participants = [
+                    Participant(
+                        trip_id=p.trip_id,
+                        name=p.name,
+                        interest_vector=p.interest_vector,
+                        schedule_preference=p.schedule_preference,
+                        wake_preference=p.wake_preference,
+                    )
+                    for p in trip_model.participants
+                ]
+                trip = Trip(
+                    id=trip_model.id,
+                    destination=trip_model.destination,
+                    start_date=trip_model.start_date,
+                    end_date=trip_model.end_date,
+                    accommodation_address=getattr(trip_model, "accommodation_address", "") or "",
+                    accommodation_lat=trip_model.accommodation_lat,
+                    accommodation_lng=trip_model.accommodation_lng,
+                    participants=participants,
+                )
+                return trip, DraftPlan.model_validate(payload)
+        return None
+
+    def analytics_summary(self) -> AnalyticsSummary:
+        with self.session() as db:
+            trips = db.execute(select(TripModel)).scalars().all()
+            trip_map = {trip.id: trip for trip in trips}
+            total_trips = len(trips)
+
+            draft_models = db.execute(select(DraftPlanModel)).scalars().all()
+            saved_drafts = len(draft_models)
+            trips_with_saved_draft = len({model.trip_id for model in draft_models})
+
+            saved_drafts_full_slots = 0
+            saved_drafts_shared = 0
+            for model in draft_models:
+                payload = model.payload or {}
+                selections = payload.get("selections") or []
+                metadata = payload.get("metadata") or {}
+
+                trip = trip_map.get(model.trip_id)
+                if trip:
+                    day_count = (trip.end_date - trip.start_date).days + 1
+                    expected_slots = max(1, day_count * 3)
+                    if len(selections) >= expected_slots:
+                        saved_drafts_full_slots += 1
+
+                if int(metadata.get("shared_count") or 0) > 0:
+                    saved_drafts_shared += 1
+
+            def pct(numerator: int, denominator: int) -> float:
+                if denominator <= 0:
+                    return 0.0
+                return round((numerator / denominator) * 100.0, 2)
+
+            return AnalyticsSummary(
+                total_trips=total_trips,
+                trips_with_saved_draft=trips_with_saved_draft,
+                pct_trips_with_saved_draft=pct(trips_with_saved_draft, total_trips),
+                saved_drafts=saved_drafts,
+                saved_drafts_full_slots=saved_drafts_full_slots,
+                pct_saved_drafts_full_slots=pct(saved_drafts_full_slots, saved_drafts),
+                saved_drafts_shared=saved_drafts_shared,
+                pct_saved_drafts_shared=pct(saved_drafts_shared, saved_drafts),
+            )

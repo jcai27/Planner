@@ -17,7 +17,7 @@ from app.db import Base, engine
 from app.engine import ItineraryEngine
 from app.main import DEFAULT_CORS_ORIGIN_REGEX, app, _load_cors_origin_regex, _load_cors_origins
 from app.places_client import GooglePlacesClient
-from app.schemas import Activity, Trip
+from app.schemas import Activity, DraftSlotName, PlanningSettings, Trip
 
 
 def auth_headers(token: str) -> dict[str, str]:
@@ -44,6 +44,7 @@ def test_trip_lifecycle_flow():
             "destination": "Paris",
             "start_date": "2026-05-10",
             "end_date": "2026-05-12",
+            "accommodation_address": "Paris City Center",
             "accommodation_lat": 48.8566,
             "accommodation_lng": 2.3522,
         }
@@ -92,6 +93,7 @@ def test_generate_requires_participant():
             "destination": "Tokyo",
             "start_date": "2026-06-01",
             "end_date": "2026-06-03",
+            "accommodation_address": "Shinjuku Station",
             "accommodation_lat": 35.6762,
             "accommodation_lng": 139.6503,
         }
@@ -112,6 +114,7 @@ def test_long_trip_returns_day_count():
             "destination": "Paris",
             "start_date": "2026-05-01",
             "end_date": "2026-05-10",
+            "accommodation_address": "Paris City Center",
             "accommodation_lat": 48.8566,
             "accommodation_lng": 2.3522,
         }
@@ -164,6 +167,7 @@ def test_create_trip_rejects_out_of_range_coordinates():
                 "destination": "Paris",
                 "start_date": "2026-05-10",
                 "end_date": "2026-05-12",
+                "accommodation_address": "Paris City Center",
                 "accommodation_lat": 120.0,
                 "accommodation_lng": 2.3522,
             },
@@ -180,6 +184,7 @@ def test_create_trip_rejects_overlong_duration():
                 "destination": "Paris",
                 "start_date": "2026-05-01",
                 "end_date": "2026-06-15",
+                "accommodation_address": "Paris City Center",
                 "accommodation_lat": 48.8566,
                 "accommodation_lng": 2.3522,
             },
@@ -196,6 +201,7 @@ def test_trip_endpoints_require_valid_access_token():
                 "destination": "Paris",
                 "start_date": "2026-05-10",
                 "end_date": "2026-05-12",
+                "accommodation_address": "Paris City Center",
                 "accommodation_lat": 48.8566,
                 "accommodation_lng": 2.3522,
             },
@@ -373,6 +379,176 @@ def test_draft_plan_can_be_saved_and_retrieved():
         assert fetched_payload["selections"][0]["slot_id"] == selections[0]["slot_id"]
 
 
+def test_planning_settings_and_validation_report_roundtrip():
+    with TestClient(app) as client:
+        create_resp = client.post(
+            "/trip/create",
+            json={
+                "destination": "Paris",
+                "start_date": "2026-05-10",
+                "end_date": "2026-05-11",
+                "accommodation_address": "Eiffel Tower, Paris",
+                "accommodation_lat": 48.8584,
+                "accommodation_lng": 2.2945,
+            },
+        )
+        assert create_resp.status_code == 200
+        trip = create_resp.json()
+        trip_id = trip["id"]
+        join_code = trip["join_code"]
+
+        join_resp = client.post(
+            f"/trip/{trip_id}/join",
+            json={
+                "name": "Ava",
+                "interest_vector": {
+                    "food": 5,
+                    "nightlife": 2,
+                    "culture": 4,
+                    "outdoors": 3,
+                    "relaxation": 2,
+                },
+                "schedule_preference": "balanced",
+                "wake_preference": "normal",
+            },
+            headers=auth_headers(join_code),
+        )
+        assert join_resp.status_code == 200
+
+        settings_resp = client.put(
+            f"/trip/{trip_id}/planning_settings",
+            json={
+                "daily_budget_per_person": 60,
+                "max_transfer_minutes": 35,
+                "dietary_notes": "vegetarian",
+                "mobility_notes": "avoid steep hills",
+                "must_do_places": ["Louvre"],
+                "avoid_places": ["fast food"],
+            },
+            headers=auth_headers(join_code),
+        )
+        assert settings_resp.status_code == 200
+        assert settings_resp.json()["daily_budget_per_person"] == 60
+
+        draft_resp = client.get(f"/trip/{trip_id}/draft_slots", headers=auth_headers(join_code))
+        assert draft_resp.status_code == 200
+        slots = draft_resp.json()["slots"]
+        selections = [
+            {
+                "slot_id": slot["slot_id"],
+                "day": slot["day"],
+                "slot": slot["slot"],
+                "activity": slot["candidates"][0],
+            }
+            for slot in slots
+            if slot["candidates"]
+        ]
+        save_resp = client.post(
+            f"/trip/{trip_id}/draft_plan",
+            json={
+                "selections": selections,
+                "planning_settings": settings_resp.json(),
+                "slot_feedback": [
+                    {
+                        "slot_id": selections[0]["slot_id"],
+                        "candidate_name": selections[0]["activity"]["name"],
+                        "votes": 2,
+                        "vetoed": False,
+                    }
+                ],
+            },
+            headers=auth_headers(join_code),
+        )
+        assert save_resp.status_code == 200
+        assert save_resp.json()["metadata"]["selection_coverage_ratio"] > 0
+
+        validation_resp = client.get(f"/trip/{trip_id}/draft_validation", headers=auth_headers(join_code))
+        assert validation_resp.status_code == 200
+        payload = validation_resp.json()
+        assert payload["trip_id"] == trip_id
+        assert payload["days"]
+        assert "estimated_cost_per_person" in payload["days"][0]
+
+
+def test_share_link_and_public_schedule_endpoint():
+    with TestClient(app) as client:
+        create_resp = client.post(
+            "/trip/create",
+            json={
+                "destination": "Paris",
+                "start_date": "2026-05-10",
+                "end_date": "2026-05-11",
+                "accommodation_address": "Eiffel Tower, Paris",
+                "accommodation_lat": 48.8584,
+                "accommodation_lng": 2.2945,
+            },
+        )
+        assert create_resp.status_code == 200
+        trip = create_resp.json()
+        trip_id = trip["id"]
+        join_code = trip["join_code"]
+
+        join_resp = client.post(
+            f"/trip/{trip_id}/join",
+            json={
+                "name": "Ava",
+                "interest_vector": {
+                    "food": 5,
+                    "nightlife": 2,
+                    "culture": 4,
+                    "outdoors": 3,
+                    "relaxation": 2,
+                },
+                "schedule_preference": "balanced",
+                "wake_preference": "normal",
+            },
+            headers=auth_headers(join_code),
+        )
+        assert join_resp.status_code == 200
+
+        draft_resp = client.get(f"/trip/{trip_id}/draft_slots", headers=auth_headers(join_code))
+        slots = draft_resp.json()["slots"]
+        selections = [
+            {
+                "slot_id": slot["slot_id"],
+                "day": slot["day"],
+                "slot": slot["slot"],
+                "activity": slot["candidates"][0],
+            }
+            for slot in slots
+            if slot["candidates"]
+        ]
+        save_resp = client.post(
+            f"/trip/{trip_id}/draft_plan",
+            json={"selections": selections},
+            headers=auth_headers(join_code),
+        )
+        assert save_resp.status_code == 200
+
+        share_resp = client.post(f"/trip/{trip_id}/share", headers=auth_headers(join_code))
+        assert share_resp.status_code == 200
+        share_payload = share_resp.json()
+        assert "share_url" in share_payload
+
+        public_resp = client.get(f"/share/{share_payload['share_token']}")
+        assert public_resp.status_code == 200
+        public_payload = public_resp.json()
+        assert public_payload["trip_id"] == trip_id
+        assert public_payload["draft_plan"]["selections"]
+        assert public_payload["validation"]["days"]
+
+
+def test_analytics_summary_endpoint_returns_expected_fields():
+    with TestClient(app) as client:
+        resp = client.get("/analytics/summary")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "total_trips" in payload
+    assert "pct_trips_with_saved_draft" in payload
+    assert "pct_saved_drafts_full_slots" in payload
+    assert "pct_saved_drafts_shared" in payload
+
+
 def test_cors_defaults_include_local_dev_and_vercel_preview_regex(monkeypatch):
     monkeypatch.delenv("CORS_ALLOW_ORIGINS", raising=False)
     monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)
@@ -526,6 +702,130 @@ def test_fast_food_filter_identifies_low_quality_restaurant_candidates():
     assert GooglePlacesClient._is_fast_food_place("McDonald's", {"restaurant"})
     assert GooglePlacesClient._is_fast_food_place("Quick Bite", {"meal_takeaway", "restaurant"})
     assert not GooglePlacesClient._is_fast_food_place("Neighborhood Bistro", {"restaurant"})
+
+
+def test_missing_price_level_defaults_to_free_for_park_category():
+    level = GooglePlacesClient._derive_price_level(
+        raw_price_level=None,
+        mapped_category="park",
+        name="Scenic Coastal Park",
+    )
+    assert level == 0
+    assert GooglePlacesClient._price_label(level) == "Free"
+
+
+def test_missing_price_level_defaults_to_low_cost_for_museum():
+    level = GooglePlacesClient._derive_price_level(
+        raw_price_level=None,
+        mapped_category="museum",
+        name="City Art Museum",
+    )
+    assert level == 1
+    assert GooglePlacesClient._price_label(level) == "Under $20"
+
+
+def test_slot_ranking_respects_avoid_place_tokens():
+    itinerary_engine = ItineraryEngine()
+    trip = Trip(
+        id="rank-avoid-test",
+        destination="Paris",
+        start_date=date(2026, 5, 1),
+        end_date=date(2026, 5, 1),
+        accommodation_lat=48.8566,
+        accommodation_lng=2.3522,
+        participants=[],
+    )
+    activities = [
+        (
+            Activity(
+                name="Old Town Museum",
+                category="museum",
+                rating=4.7,
+                price_level=1,
+                latitude=48.86,
+                longitude=2.35,
+                typical_visit_duration=120,
+            ),
+            0.8,
+        ),
+        (
+            Activity(
+                name="Tourist Trap Museum",
+                category="museum",
+                rating=4.8,
+                price_level=2,
+                latitude=48.8605,
+                longitude=2.3504,
+                typical_visit_duration=120,
+            ),
+            0.9,
+        ),
+    ]
+    settings = PlanningSettings(avoid_places=["trap"])
+
+    ranked = itinerary_engine._rank_slot_candidates(
+        scored_activities=activities,
+        slot_name=DraftSlotName.morning,
+        excluded_names=set(),
+        planning_settings=settings,
+        category_usage=Counter(),
+        trip=trip,
+    )
+
+    names = [activity.name for activity, _ in ranked]
+    assert "Tourist Trap Museum" not in names
+    assert "Old Town Museum" in names
+
+
+def test_slot_ranking_boosts_must_do_places():
+    itinerary_engine = ItineraryEngine()
+    trip = Trip(
+        id="rank-mustdo-test",
+        destination="Paris",
+        start_date=date(2026, 5, 1),
+        end_date=date(2026, 5, 1),
+        accommodation_lat=48.8566,
+        accommodation_lng=2.3522,
+        participants=[],
+    )
+    activities = [
+        (
+            Activity(
+                name="Louvre Museum",
+                category="museum",
+                rating=4.7,
+                price_level=2,
+                latitude=48.8606,
+                longitude=2.3376,
+                typical_visit_duration=180,
+            ),
+            0.75,
+        ),
+        (
+            Activity(
+                name="District Gallery",
+                category="museum",
+                rating=4.8,
+                price_level=2,
+                latitude=48.861,
+                longitude=2.341,
+                typical_visit_duration=120,
+            ),
+            0.78,
+        ),
+    ]
+    settings = PlanningSettings(must_do_places=["louvre"])
+
+    ranked = itinerary_engine._rank_slot_candidates(
+        scored_activities=activities,
+        slot_name=DraftSlotName.morning,
+        excluded_names=set(),
+        planning_settings=settings,
+        category_usage=Counter(),
+        trip=trip,
+    )
+
+    assert ranked[0][0].name == "Louvre Museum"
 
 
 def test_fetch_activities_uses_google_places_when_available():

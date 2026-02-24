@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { AnalyticsSummary } from "@/lib/types";
 
 export default function HomePage() {
   const router = useRouter();
@@ -13,6 +14,11 @@ export default function HomePage() {
   const [address, setAddress] = useState("Eiffel Tower, Paris");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [metrics, setMetrics] = useState<AnalyticsSummary | null>(null);
+
+  useEffect(() => {
+    api.getAnalyticsSummary().then(setMetrics).catch(() => null);
+  }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -74,6 +80,22 @@ export default function HomePage() {
               <p className="metric-value">3 plan options</p>
             </article>
           </div>
+          {metrics && (
+            <div className="travel-metrics mt-4">
+              <article className="metric-card">
+                <p className="metric-label">Draft Adoption</p>
+                <p className="metric-value">{metrics.pct_trips_with_saved_draft}%</p>
+              </article>
+              <article className="metric-card">
+                <p className="metric-label">Full Coverage</p>
+                <p className="metric-value">{metrics.pct_saved_drafts_full_slots}%</p>
+              </article>
+              <article className="metric-card">
+                <p className="metric-label">Share Rate</p>
+                <p className="metric-value">{metrics.pct_saved_drafts_shared}%</p>
+              </article>
+            </div>
+          )}
         </section>
 
         <section className="panel fade-up p-8 md:p-12">

@@ -1,4 +1,17 @@
-import { DraftPlan, DraftSelection, DraftSchedule, ItineraryResult, Trip, TripCreateResponse } from "@/lib/types";
+import {
+  AnalyticsSummary,
+  DraftPlan,
+  DraftSlotFeedback,
+  DraftSelection,
+  DraftSchedule,
+  DraftValidationReport,
+  ItineraryResult,
+  PlanningSettings,
+  ShareDraftPlanResponse,
+  SharedDraftPlanResponse,
+  Trip,
+  TripCreateResponse
+} from "@/lib/types";
 
 const API_BASE = "/api/backend";
 const TOKEN_STORAGE_PREFIX = "trip-token:";
@@ -120,7 +133,18 @@ export const api = {
     return tripReq<DraftSchedule>(tripId, `/trip/${tripId}/draft_slots`);
   },
 
-  saveDraftPlan(tripId: string, payload: { selections: DraftSelection[] }) {
+  getPlanningSettings(tripId: string) {
+    return tripReq<PlanningSettings>(tripId, `/trip/${tripId}/planning_settings`);
+  },
+
+  savePlanningSettings(tripId: string, payload: PlanningSettings) {
+    return tripReq<PlanningSettings>(tripId, `/trip/${tripId}/planning_settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  saveDraftPlan(tripId: string, payload: { selections: DraftSelection[]; planning_settings?: PlanningSettings; slot_feedback?: DraftSlotFeedback[] }) {
     return tripReq<DraftPlan>(tripId, `/trip/${tripId}/draft_plan`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -129,5 +153,21 @@ export const api = {
 
   getDraftPlan(tripId: string) {
     return tripReq<DraftPlan>(tripId, `/trip/${tripId}/draft_plan`);
-  }
+  },
+
+  getDraftValidation(tripId: string) {
+    return tripReq<DraftValidationReport>(tripId, `/trip/${tripId}/draft_validation`);
+  },
+
+  createShareLink(tripId: string) {
+    return tripReq<ShareDraftPlanResponse>(tripId, `/trip/${tripId}/share`, { method: "POST" });
+  },
+
+  getSharedDraft(shareToken: string) {
+    return req<SharedDraftPlanResponse>(`/share/${encodeURIComponent(shareToken)}`);
+  },
+
+  getAnalyticsSummary() {
+    return req<AnalyticsSummary>("/analytics/summary");
+  },
 };

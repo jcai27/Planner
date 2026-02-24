@@ -5,11 +5,11 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
-RawActivity = Tuple[str, str, float, int, float, float, int, str, str, str]
+RawActivity = Tuple[str, str, float, int, float, float, int, str, str, str, str]
 FAST_FOOD_KEYWORDS = {
     "mcdonald",
     "burger king",
@@ -33,6 +33,20 @@ DISALLOWED_RESTAURANT_TYPES = {
     "meal_delivery",
     "convenience_store",
     "gas_station",
+}
+FREE_CATEGORY_DEFAULTS = {"park", "beach", "hike", "landmark", "relaxation"}
+LOW_COST_CATEGORY_DEFAULTS = {"museum", "culture"}
+FREE_NAME_HINTS = {
+    "park",
+    "beach",
+    "trail",
+    "hike",
+    "lookout",
+    "viewpoint",
+    "promenade",
+    "boardwalk",
+    "waterfall",
+    "garden",
 }
 
 
@@ -95,16 +109,13 @@ class GooglePlacesClient:
                     continue
 
                 rating = float(place.get("rating") or 4.2)
-                price_level = int(place.get("price_level") or 2)
-                
-                price_mapping = {
-                    0: "Free",
-                    1: "Under $20",
-                    2: "$20 - $50",
-                    3: "$50 - $100",
-                    4: "$100+",
-                }
-                estimated_price = price_mapping.get(price_level, "$20 - $50")
+                price_level = self._derive_price_level(
+                    raw_price_level=place.get("price_level"),
+                    mapped_category=type_config.mapped_category,
+                    name=str(name),
+                )
+                estimated_price = self._price_label(price_level)
+                price_confidence = "verified" if place.get("price_level") is not None else "inferred"
                 
                 activity_url = f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}&query_place_id={place_id}"
 
@@ -126,6 +137,7 @@ class GooglePlacesClient:
                     photo_url,
                     activity_url,
                     estimated_price,
+                    price_confidence,
                 )
                 existing = places_by_id.get(place_id)
                 if not existing or raw_item[2] > existing[2]:
@@ -168,3 +180,34 @@ class GooglePlacesClient:
         if place_types.intersection(DISALLOWED_RESTAURANT_TYPES):
             return True
         return False
+
+    @staticmethod
+    def _price_label(price_level: int) -> str:
+        mapping = {
+            0: "Free",
+            1: "Under $20",
+            2: "$20 - $50",
+            3: "$50 - $100",
+            4: "$100+",
+        }
+        return mapping.get(price_level, "Varies")
+
+    @staticmethod
+    def _derive_price_level(raw_price_level: object, mapped_category: str, name: str) -> int:
+        if isinstance(raw_price_level, int):
+            return max(0, min(raw_price_level, 4))
+        if isinstance(raw_price_level, str) and raw_price_level.isdigit():
+            return max(0, min(int(raw_price_level), 4))
+
+        lowered = name.strip().lower()
+        if mapped_category in FREE_CATEGORY_DEFAULTS:
+            return 0
+        if any(hint in lowered for hint in FREE_NAME_HINTS):
+            return 0
+        if mapped_category in LOW_COST_CATEGORY_DEFAULTS:
+            return 1
+        if mapped_category in {"food", "restaurant"}:
+            return 2
+        if mapped_category in {"bar", "nightclub", "spa"}:
+            return 3
+        return 1

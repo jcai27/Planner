@@ -27,6 +27,7 @@ Optional LLM explanations:
 4. set `CORS_ALLOW_ORIGINS` (comma-separated origins; defaults to `http://localhost:3000`)
 5. set `GOOGLE_PLACES_API_KEY` to pull real places/activities from Google Places (optional but recommended)
 6. set `OPENAI_DESTINATION_RERANK_MODEL` to control AI destination rerank model (defaults to `OPENAI_EXPLANATION_MODEL`)
+7. set `FRONTEND_BASE_URL` for share-link generation (defaults to `http://localhost:3000`)
 
 ## Database migrations (Alembic)
 
@@ -61,6 +62,15 @@ Open `http://localhost:3000`.
 - `GET /trip/{id}` (requires header `X-Trip-Token`)
 - `POST /trip/{id}/generate_itinerary` (requires header `X-Trip-Token`)
 - `GET /trip/{id}/itinerary` (requires header `X-Trip-Token`)
+- `GET /trip/{id}/draft_slots` (requires header `X-Trip-Token`)
+- `GET /trip/{id}/planning_settings` (requires header `X-Trip-Token`)
+- `PUT /trip/{id}/planning_settings` (requires header `X-Trip-Token`)
+- `POST /trip/{id}/draft_plan` (requires header `X-Trip-Token`)
+- `GET /trip/{id}/draft_plan` (requires header `X-Trip-Token`)
+- `GET /trip/{id}/draft_validation` (requires header `X-Trip-Token`)
+- `POST /trip/{id}/share` (requires header `X-Trip-Token`)
+- `GET /share/{share_token}` (public read-only shared plan)
+- `GET /analytics/summary`
 
 ## Notes
 

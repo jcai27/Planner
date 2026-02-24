@@ -305,6 +305,121 @@ body {
   font-size: 0.86rem;
 }
 
+.view-tabs {
+  display: inline-flex;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-soft);
+}
+
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  color: var(--muted);
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.view-tab:hover {
+  color: var(--ink);
+}
+
+.view-tab-active {
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.schedule-table-wrap {
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.schedule-table {
+  width: 100%;
+  min-width: 880px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+  padding: 0.95rem;
+}
+
+.schedule-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.schedule-day-cell {
+  min-width: 175px;
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.schedule-activity-card {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.schedule-activity-name {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.schedule-activity-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.schedule-activity-reason {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.schedule-map-link {
+  margin-top: 0.35rem;
+  display: inline-flex;
+  width: fit-content;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.schedule-map-link:hover {
+  border-bottom-color: var(--brand);
+}
+
 .fade-up {
   animation: fade-up 520ms ease-out both;
 }
