@@ -25,6 +25,7 @@ export default function TripPage() {
   const [savedDraftPlan, setSavedDraftPlan] = useState<DraftPlan | null>(null);
   const [draftIndex, setDraftIndex] = useState(0);
   const [draftPicks, setDraftPicks] = useState<Record<string, Activity>>({});
+  const [draftModalOpen, setDraftModalOpen] = useState(false);
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [participantName, setParticipantName] = useState("");
   const [interests, setInterests] = useState<InterestVector>(defaultInterests);
@@ -92,6 +93,16 @@ export default function TripPage() {
       .map(([day, picks]) => ({ day, picks }));
   }, [savedDraftPlan]);
 
+  const getDraftCandidateDescription = (candidate: Activity, slot: "morning" | "afternoon" | "evening"): string => {
+    if (candidate.explanation && candidate.explanation.trim()) {
+      return candidate.explanation;
+    }
+    if (slot === "evening") {
+      return `${candidate.name} is a strong dinner choice with solid ratings and easy group appeal.`;
+    }
+    return `${candidate.name} is a ${candidate.category} activity that fits this slot and keeps the day balanced.`;
+  };
+
   useEffect(() => {
     if (inviteToken) {
       api.saveTripAccess(tripId, inviteToken);
@@ -116,6 +127,12 @@ export default function TripPage() {
     };
     void load();
   }, [tripId, inviteToken]);
+
+  useEffect(() => {
+    if (!currentDraftSlot) {
+      setDraftModalOpen(false);
+    }
+  }, [currentDraftSlot]);
 
   const onJoin = async (e: FormEvent) => {
     e.preventDefault();
@@ -173,6 +190,7 @@ export default function TripPage() {
       setDraft(generatedDraft);
       setDraftPicks(prefills);
       setDraftIndex(firstUnpickedIndex === -1 ? generatedDraft.slots.length : firstUnpickedIndex);
+      setDraftModalOpen(firstUnpickedIndex !== -1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate slot draft");
     } finally {
@@ -196,6 +214,7 @@ export default function TripPage() {
     setStatusMessage("");
     setDraftPicks({});
     setDraftIndex(0);
+    setDraftModalOpen(false);
   };
 
   const onSaveDraftPlan = async () => {
@@ -392,56 +411,21 @@ export default function TripPage() {
               <div className="score-track mt-3">
                 <span className="score-fill" style={{ width: `${draftProgress}%` }} />
               </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {currentDraftSlot.candidates.map((candidate) => {
-                  const selected = draftPicks[currentDraftSlot.slot_id]?.name === candidate.name;
-                  return (
-                    <article
-                      key={`${currentDraftSlot.slot_id}-${candidate.name}`}
-                      className={`rounded-xl border bg-[var(--surface)] p-4 shadow-sm transition-shadow hover:shadow-md ${
-                        selected ? "border-[var(--brand)]" : "border-[var(--line)]"
-                      }`}
-                    >
-                      {candidate.image_url && (
-                        <div className="-mx-4 -mt-4 mb-4 h-36 overflow-hidden rounded-t-xl bg-[var(--surface-soft)]">
-                          <img
-                            src={candidate.image_url}
-                            alt={candidate.name}
-                            className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
-                          />
-                        </div>
-                      )}
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-[var(--ink)]">{candidate.name}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)] capitalize">
-                            {candidate.category}
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-[var(--line-strong)] bg-[var(--surface-soft)] px-2.5 py-1 text-xs font-medium text-[var(--muted)]">
-                          {candidate.rating.toFixed(1)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-[var(--muted)]">
-                        {Array(Math.max(1, candidate.price_level)).fill("$").join("")}
-                        {candidate.estimated_price ? ` | ${candidate.estimated_price}` : ""}
-                      </p>
-                      <button onClick={() => onPickCandidate(candidate)} className="primary-btn mt-4 w-full">
-                        Pick This
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <button onClick={onBackDraftSlot} className="secondary-btn" disabled={draftIndex === 0}>
-                  Previous Slot
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Open the popup to review 4 options with quick reasons, then pick one.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <button onClick={() => setDraftModalOpen(true)} className="primary-btn">
+                  Open Choices Popup
                 </button>
-                <button onClick={onRedraft} className="secondary-btn">
-                  Restart Draft
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={onBackDraftSlot} className="secondary-btn" disabled={draftIndex === 0}>
+                    Previous Slot
+                  </button>
+                  <button onClick={onRedraft} className="secondary-btn">
+                    Restart Draft
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -613,6 +597,79 @@ export default function TripPage() {
           </div>
         </div>
       </section>
+
+      {draftModalOpen && currentDraftSlot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl border border-[var(--line-strong)] bg-[var(--surface)] p-6 shadow-2xl md:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Draft Round</p>
+                <h3 className="font-[var(--font-heading)] text-2xl font-semibold text-[var(--ink)]">
+                  Day {currentDraftSlot.day} - {slotLabel[currentDraftSlot.slot]}
+                </h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Pick 1 of {currentDraftSlot.candidates.length}. Slot {Math.min(draftIndex + 1, draftSlots.length)} of {draftSlots.length}.
+                </p>
+              </div>
+              <button onClick={() => setDraftModalOpen(false)} className="secondary-btn">Close</button>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {currentDraftSlot.candidates.map((candidate) => {
+                const selected = draftPicks[currentDraftSlot.slot_id]?.name === candidate.name;
+                return (
+                  <article
+                    key={`${currentDraftSlot.slot_id}-modal-${candidate.name}`}
+                    className={`rounded-xl border bg-[var(--surface-soft)] p-4 shadow-sm transition-shadow hover:shadow-md ${
+                      selected ? "border-[var(--brand)]" : "border-[var(--line)]"
+                    }`}
+                  >
+                    {candidate.image_url && (
+                      <div className="-mx-4 -mt-4 mb-4 h-40 overflow-hidden rounded-t-xl bg-[var(--surface)]">
+                        <img
+                          src={candidate.image_url}
+                          alt={candidate.name}
+                          className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                        />
+                      </div>
+                    )}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-[var(--ink)]">{candidate.name}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)] capitalize">
+                          {candidate.category}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-[var(--line-strong)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted)]">
+                        {candidate.rating.toFixed(1)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-[var(--muted)]">
+                      {Array(Math.max(1, candidate.price_level)).fill("$").join("")}
+                      {candidate.estimated_price ? ` | ${candidate.estimated_price}` : ""}
+                    </p>
+                    <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
+                      {getDraftCandidateDescription(candidate, currentDraftSlot.slot)}
+                    </p>
+                    <button onClick={() => onPickCandidate(candidate)} className="primary-btn mt-4 w-full">
+                      Pick This
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+              <button onClick={onBackDraftSlot} className="secondary-btn" disabled={draftIndex === 0}>
+                Previous Slot
+              </button>
+              <button onClick={onRedraft} className="secondary-btn">
+                Restart Draft
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

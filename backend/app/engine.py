@@ -217,6 +217,24 @@ class ItineraryEngine:
                     )
                 )
 
+        # Add short candidate descriptions so draft cards can explain what each place is and why it fits.
+        unique_candidates: Dict[str, Activity] = {}
+        for slot in slots:
+            for candidate in slot.candidates:
+                unique_candidates[candidate.name] = candidate
+
+        explanations = self._explain_activities(
+            activities=list(unique_candidates.values()),
+            style=dominant_style,
+            group_interest_vector=group_interest_vector,
+            trip=trip,
+        )
+        for slot in slots:
+            slot.candidates = [
+                candidate.model_copy(update={"explanation": explanations.get(candidate.name, "")})
+                for candidate in slot.candidates
+            ]
+
         return DraftSchedule(
             trip_id=trip.id,
             generated_at=datetime.utcnow().isoformat(),
